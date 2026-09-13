@@ -1,9 +1,0 @@
-{
-  "query_embedding_dimension": 768,
-  "query_embedding_norm": 0.9999999489495411,
-  "retrieved_count": 20,
-  "similarity_range": [
-    0.474463161762141,
-    0.706024730923745
-  ]
-}

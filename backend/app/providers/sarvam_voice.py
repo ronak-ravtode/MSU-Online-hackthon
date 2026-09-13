@@ -225,6 +225,6 @@ class SarvamTTSProvider:
     async def text_to_speech_segments(self, segments: list[dict]) -> bytes:
         """Convert text segments to multi-voice speech."""
         combined_text = " ".join(s.get("text", "") for s in segments if s.get("text"))
-        lang = segments[0].get("lang", "hi") if segments else "hi"
+        lang = segments[0].get("language", "hi") if segments else "hi"
         return await self.synthesize(combined_text, lang)
 

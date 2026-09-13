@@ -205,35 +205,3 @@ def verify_citations(
         unsupported_claims=unsupported_claims,
         reason=reason,
     )
-
-
-def verify_and_repair(
-    answer: str,
-    evidence_chunk_ids: list[str],
-    claims: list[AtomicClaim] | None = None,
-    repair_fn=None,
-) -> VerificationResult:
-    """Verify with one bounded repair attempt.
-
-    If verification fails and repair_fn is provided, attempt repair.
-    If repair also fails, return CITATION_FAILURE.
-    """
-    result = verify_citations(answer, evidence_chunk_ids, claims)
-
-    if result.is_valid:
-        return result
-
-    # Attempt repair
-    if repair_fn:
-        result.repair_attempted = True
-        try:
-            repaired_answer = repair_fn(answer, evidence_chunk_ids)
-            repaired_result = verify_citations(
-                repaired_answer, evidence_chunk_ids, claims
-            )
-            repaired_result.repair_attempted = True
-            return repaired_result
-        except Exception:
-            pass
-
-    return result

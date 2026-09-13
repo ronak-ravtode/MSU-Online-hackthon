@@ -20,6 +20,8 @@ import { deco } from "@/lib/data/deco";
 import { createSpeechService, speakSegments } from "@/lib/speech";
 import { EvidenceBand } from "@/components/EvidenceBand";
 import { evidenceBand } from "@/lib/band";
+import { GrievanceCard } from "./GrievanceCard";
+import { GrievanceFlow } from "./GrievanceFlow";
 
 type Citation = ChatResponse["citations"][number];
 
@@ -354,7 +356,7 @@ export function cleanTextForSpeech(text: string): string {
   return cleaned;
 }
 
-export function MessageBubble({ resp, isStreaming = false }: { resp: ChatResponse; isStreaming?: boolean }) {
+export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrievanceFinalized, isActive = false }: { resp: ChatResponse; isStreaming?: boolean; onSendMessage?: (message: string) => void; onGrievanceFinalized?: (finalizedResponse: ChatResponse) => void; isActive?: boolean }) {
   const { t } = useI18n();
   const speech = useMemo(() => createSpeechService(), []);
   const [speaking, setSpeaking] = useState(false);
@@ -376,6 +378,30 @@ export function MessageBubble({ resp, isStreaming = false }: { resp: ChatRespons
     () => parseAnswerSegments(resp.answer),
     [resp.answer],
   );
+
+  // The `grievance` object is attached from the very first turn of the
+  // workflow (classification confirmation onward) and fills in
+  // progressively — it is NOT itself a signal that the draft is done.
+  // `grievance.submission` is only populated once a submission route has
+  // been resolved, which happens exactly on the turn that completes the
+  // draft. That's the single authoritative moment to show ONE structured
+  // GrievanceCard instead of the normal follow-up-question prose — using
+  // mere `grievance` presence here would suppress the actual follow-up
+  // questions ("What is your ward number?") on every earlier turn.
+  const isGrievanceComplete =
+    resp.mode === "grievance" && !!resp.grievance && !!resp.grievance.submission;
+
+  // Check if we have structured grievance data for the new UI flow.
+  // The LATEST (active) grievance-stage message renders the live,
+  // interactive wizard. Any earlier grievance-stage message renders the
+  // SAME structured table/panel UI, but permanently read-only -- it must
+  // stay visible as a table, not collapse into plain-text prose (the old
+  // free-text grievance output has been removed entirely).
+  const hasStructuredGrievance =
+    resp.mode === "grievance" &&
+    !!resp.grievance_stage &&
+    resp.grievance_stage !== "complete" &&
+    !!onSendMessage;
 
   async function handleSpeak() {
     if (speaking) {
@@ -447,45 +473,70 @@ export function MessageBubble({ resp, isStreaming = false }: { resp: ChatRespons
           <span className="text-[11px] sm:text-xs text-[var(--text-faint)]">{(resp.confidence * 100).toFixed(0)}% match</span>
         </div>
 
-        {/* Answer Content — with inline citation tags */}
-        <div className={`font-answer text-sm sm:text-base leading-relaxed text-[var(--ink)] prose prose-sm max-w-none prose-headings:font-semibold prose-headings:text-[var(--ink)] prose-p:my-2 prose-p:leading-relaxed prose-ul:my-2.5 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-2.5 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1 prose-strong:font-semibold prose-strong:text-[var(--ink)] prose-table:text-xs prose-th:font-semibold prose-td:py-1 prose-th:py-1 prose-pre:bg-[var(--dark)] prose-pre:text-[var(--on-dark-strong)] prose-code:text-[var(--accent-primary)] ${isStreaming ? "streaming-text" : ""}`}>
-          {answerSegments.map((seg, i) => {
-            if (seg.type === "text") {
+        {/* Structured grievance object present -> this turn IS the
+            grievance-complete event. Show one short localized
+            confirmation instead of the full prose draft, then the
+            single authoritative GrievanceCard below. `resp.answer`
+            still holds the full text (used for copy/speech) but is
+            not duplicated visually here — see Task 1 in the grievance
+            productization notes: the frontend must render ONE
+            authoritative grievance experience, never the full-text
+            draft followed by the same draft again in the card. */}
+        {isGrievanceComplete ? (
+          <p className="font-answer text-sm sm:text-base leading-relaxed text-[var(--ink)]">
+            {t("grievanceCard.confirmation")}
+          </p>
+        ) : hasStructuredGrievance ? (
+          /* Structured grievance flow - render interactive UI */
+          <GrievanceFlow response={resp} onSendMessage={onSendMessage!} onGrievanceFinalized={onGrievanceFinalized} readOnly={!isActive} />
+        ) : (
+          /* Answer Content — with inline citation tags */
+          <div className={`font-answer text-sm sm:text-base leading-relaxed text-[var(--ink)] prose prose-sm max-w-none prose-headings:font-semibold prose-headings:text-[var(--ink)] prose-p:my-2 prose-p:leading-relaxed prose-ul:my-2.5 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-2.5 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1 prose-strong:font-semibold prose-strong:text-[var(--ink)] prose-table:text-xs prose-th:font-semibold prose-td:py-1 prose-th:py-1 prose-pre:bg-[var(--dark)] prose-pre:text-[var(--on-dark-strong)] prose-code:text-[var(--accent-primary)] ${isStreaming ? "streaming-text" : ""}`}>
+            {answerSegments.map((seg, i) => {
+              if (seg.type === "text") {
+                return (
+                  <Markdown
+                    key={i}
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => <p className="mb-2.5 leading-relaxed text-[var(--ink)]">{children}</p>,
+                      ul: ({ children }) => <ul className="my-2.5 list-disc pl-5 space-y-1 text-[var(--ink)]">{children}</ul>,
+                      ol: ({ children }) => <ol className="my-2.5 list-decimal pl-5 space-y-1 text-[var(--ink)]">{children}</ol>,
+                      li: ({ children }) => <li className="pl-1 leading-relaxed">{children}</li>,
+                      strong: ({ children }) => <strong className="font-semibold text-[var(--ink)]">{children}</strong>,
+                      h1: ({ children }) => <h1 className="text-lg font-bold my-2 text-[var(--ink)]">{children}</h1>,
+                      h2: ({ children }) => <h2 className="text-base font-bold my-2 text-[var(--ink)]">{children}</h2>,
+                      h3: ({ children }) => <h3 className="text-sm font-semibold my-1.5 text-[var(--ink)]">{children}</h3>,
+                    }}
+                  >
+                    {cleanMarkdownForDisplay(seg.value)}
+                  </Markdown>
+                );
+              }
+              // Citation tag — clickable
               return (
-                <Markdown
-                  key={i}
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    p: ({ children }) => <p className="mb-2.5 leading-relaxed text-[var(--ink)]">{children}</p>,
-                    ul: ({ children }) => <ul className="my-2.5 list-disc pl-5 space-y-1 text-[var(--ink)]">{children}</ul>,
-                    ol: ({ children }) => <ol className="my-2.5 list-decimal pl-5 space-y-1 text-[var(--ink)]">{children}</ol>,
-                    li: ({ children }) => <li className="pl-1 leading-relaxed">{children}</li>,
-                    strong: ({ children }) => <strong className="font-semibold text-[var(--ink)]">{children}</strong>,
-                    h1: ({ children }) => <h1 className="text-lg font-bold my-2 text-[var(--ink)]">{children}</h1>,
-                    h2: ({ children }) => <h2 className="text-base font-bold my-2 text-[var(--ink)]">{children}</h2>,
-                    h3: ({ children }) => <h3 className="text-sm font-semibold my-1.5 text-[var(--ink)]">{children}</h3>,
-                  }}
-                >
-                  {cleanMarkdownForDisplay(seg.value)}
-                </Markdown>
+                <span key={i} className="inline-block align-middle mx-0.5">
+                  <CitationTag
+                    id={seg.id}
+                    citationMap={citationMap}
+                    isExpanded={expandedChunkId === seg.id}
+                    onToggle={() => {
+                      setEvidencePanelOpen(true);
+                      setExpandedChunkId((prev) => (prev === seg.id ? null : seg.id));
+                    }}
+                  />
+                </span>
               );
-            }
-            // Citation tag — clickable
-            return (
-              <span key={i} className="inline-block align-middle mx-0.5">
-                <CitationTag
-                  id={seg.id}
-                  citationMap={citationMap}
-                  isExpanded={expandedChunkId === seg.id}
-                  onToggle={() => {
-                    setEvidencePanelOpen(true);
-                    setExpandedChunkId((prev) => (prev === seg.id ? null : seg.id));
-                  }}
-                />
-              </span>
-            );
-          })}
-        </div>
+            })}
+          </div>
+        )}
+
+        {/* Structured grievance summary — reads only the canonical
+            `grievance` object, never the prose answer, so it renders
+            identically regardless of the user's language. */}
+        {isGrievanceComplete && (
+          <GrievanceCard grievance={resp.grievance!} />
+        )}
 
         {/* Grounded indicator — when citations exist */}
         {resp.citations.length > 0 && !evidencePanelOpen && (

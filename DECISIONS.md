@@ -124,3 +124,18 @@ Each entry: what changed, why, what it replaced, when.
 **Date:** 2026-09-05
 **What:** `GENERATION_MAX_TOKENS = 1800` for normal generation, `REPAIR_MAX_TOKENS = 2200` for citation repair. These values are sent to Groq as `max_tokens` in the API request.
 **Why:** Intentional engineering control to bound generation output size and latency/cost. Value transplanted from eGovAssistant proven defaults.
+
+---
+
+### Grievance localization: output-boundary translation, not LLM translation
+**Date:** 2026-09-10
+**What:** All grievance workflow processing happens in English only. Translation is applied at the output boundary in `_process_grievance_message()` and `/grievances/*` endpoints. User-entered values are preserved verbatim; only system-generated metadata (submission data, field labels, draft summary values, canonical dict top-level) is translated via the provider chain. Field labels use a static `FIELD_LABELS` lookup dict (150+ entries) rather than LLM translation.
+**Why:** LLM translation of user values risks hallucination or content drift. Static lookup for field labels avoids latency and cost of per-request LLM calls. Output-boundary translation ensures English-only internal state while delivering fully localized responses.
+**Current state:** `chat.py` and `grievance.py` both apply translation before returning responses. Frontend uses `field_label` from backend for tab rendering.
+
+---
+
+### Session isolation via useRef in ChatWindow
+**Date:** 2026-09-10
+**What:** `sessionId` in `ChatWindow.tsx` changed from `useState` to `useRef` + `resetSessionId()`. Reset on new-chat, load-conversation, delete-conversation, clear-all-history, and URL query param handlers.
+**Why:** `useState` created `sessionId` once and never reset it, causing grievance state to leak across "New Chat" actions. Backend fresh-state defense in `GrievanceWorkflow.process_message()` complements this by detecting new complaints after completed grievances.

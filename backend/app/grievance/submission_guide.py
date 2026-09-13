@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from .models import (
     GrievanceCategory,
     GrievanceDraft,
+    GrievanceEntity,
     GrievanceSubCategory,
     SubmissionRoute,
 )
@@ -17,6 +18,31 @@ _LOCATION_IN_TEXT_RE = re.compile(
     r"\bin\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s*,\s*"
     r"([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)"
 )
+
+
+_CITY_TO_STATE: dict[str, str] = {
+    "bharuch": "Gujarat",
+    "vadodara": "Gujarat",
+    "ahmedabad": "Gujarat",
+    "surat": "Gujarat",
+    "rajkot": "Gujarat",
+    "mumbai": "Maharashtra",
+    "pune": "Maharashtra",
+    "nagpur": "Maharashtra",
+    "delhi": "Delhi",
+    "new delhi": "Delhi",
+    "bangalore": "Karnataka",
+    "bengaluru": "Karnataka",
+    "chennai": "Tamil Nadu",
+    "kolkata": "West Bengal",
+    "hyderabad": "Telangana",
+    "jaipur": "Rajasthan",
+    "lucknow": "Uttar Pradesh",
+    "patna": "Bihar",
+    "bhopal": "Madhya Pradesh",
+    "thiruvananthapuram": "Kerala",
+    "chandigarh": "Chandigarh",
+}
 
 
 class GrievanceSubmissionGuide:
@@ -376,7 +402,7 @@ class GrievanceSubmissionGuide:
         },
     }
 
-    def get_submission_route(self, draft: GrievanceDraft) -> SubmissionRoute:
+    def get_submission_route(self, draft: GrievanceDraft, language: str = "en") -> SubmissionRoute:
         """Get the official submission route for a grievance draft."""
         category_map = self.PORTAL_MAP.get(draft.category, {})
         route = category_map.get(draft.sub_category, category_map.get("default"))
@@ -402,7 +428,7 @@ class GrievanceSubmissionGuide:
             )
 
         if draft.category == GrievanceCategory.MUNICIPAL:
-            route = self._localize_municipal_route(route, draft)
+            route = self._localize_municipal_route(route, draft, language)
 
         return route
 
@@ -449,7 +475,7 @@ class GrievanceSubmissionGuide:
                 city = parts[-1] if len(parts) > 1 else None
 
         if not city:
-            for key in ("district", "city"):
+            for key in ("district", "city", "city_name"):
                 entity = draft.entities.get(key) if draft.entities else None
                 if entity and entity.value and entity.value.strip():
                     city = entity.value.strip()
@@ -464,7 +490,34 @@ class GrievanceSubmissionGuide:
             if match:
                 city = match.group(2).strip()
 
-        return city, draft.state
+        resolved_state = self._resolve_state(city, draft.state)
+        if draft.state is None and resolved_state is not None:
+            draft.state = resolved_state
+        # Persist city into draft entities so to_canonical_dict can find it.
+        if city and draft.entities is not None:
+            existing_city = draft.entities.get("city_name") or draft.entities.get("city")
+            if not existing_city or not (existing_city.value or "").strip():
+                draft.entities["city_name"] = GrievanceEntity(
+                    name="city_name",
+                    value=city,
+                    confidence=0.85,
+                    source_text="resolved from locality",
+                )
+        return city, resolved_state
+
+    def _resolve_state(self, city: str | None, draft_state: str | None) -> str | None:
+        """Return the best-available state.
+
+        If the draft already has a valid state, use it.  Otherwise, if we
+        know the city, look it up in the small ``_CITY_TO_STATE``
+        mapping.  Returns ``None`` only when neither source provides a
+        state.
+        """
+        if draft_state:
+            return draft_state
+        if city:
+            return _CITY_TO_STATE.get(city.lower())
+        return None
 
     def _resolve_local_authority(self, city: str) -> str:
         """Resolve the governing local body's name for a city/town.
@@ -531,7 +584,7 @@ class GrievanceSubmissionGuide:
 
         return None
 
-    def _localize_municipal_route(self, route: SubmissionRoute, draft: GrievanceDraft) -> SubmissionRoute:
+    def _localize_municipal_route(self, route: SubmissionRoute, draft: GrievanceDraft, language: str = "en") -> SubmissionRoute:
         """Rewrite a municipal route so it points at the citizen's
         ACTUAL governing local authority, resolved from
         locality -> city -> state, instead of either a generic
@@ -543,46 +596,67 @@ class GrievanceSubmissionGuide:
         city, and the authority is resolved one level up the
         hierarchy. If the city can't be determined at all, this says
         so honestly rather than guessing.
+
+        All user-facing strings are built via localized templates so
+        they are NEVER in English when the user's language is non-English.
         """
+        from app.grievance.translations import translate_template
+
         city, state = self._resolve_location_context(draft)
 
         if not city:
-            portal_name = "Municipal Corporation / Urban Local Body Citizen Portal"
-            department = "Urban Local Body / Municipal Corporation"
+            # Use localized templates for the generic fallback
+            portal_name = translate_template(
+                "portal_municipal_with_authority", language,
+                authority=translate_template(
+                    "department_municipal_with_authority", language, city="",
+                ) if language != "en" else "Municipal Corporation / Urban Local Body",
+            ) if language != "en" else "Municipal Corporation / Urban Local Body Citizen Portal"
+            department = route.department  # "Urban Local Body / Municipal Corporation"
             portal_url = (
-                "Could not verify the exact local municipal authority/portal "
-                "from the details provided -- please check your city or "
-                "town's municipal corporation / urban local body website, "
-                "or visit the local ward office in person."
+                "The official portal URL could not be automatically "
+                "verified. Please visit the Municipal Corporation / "
+                "Urban Local Body website directly."
             )
-            first_step = (
-                "Identify your city/town's municipal corporation or urban "
-                "local body (the portal depends on your specific location)"
+            first_step = translate_template(
+                "step_identify_municipal_authority", language,
             )
         else:
             authority = self._resolve_local_authority(city)
             location_label = f"{city}, {state}" if state else city
 
-            portal_name = f"{authority} — Citizen Grievance Portal"
-            department = authority
+            if language != "en":
+                portal_name = translate_template(
+                    "portal_municipal_with_authority", language,
+                    authority=authority,
+                )
+                department = translate_template(
+                    "department_municipal_with_city", language,
+                    city=city,
+                )
+                first_step = translate_template(
+                    "step_visit_authority_for_location", language,
+                    authority=authority,
+                    location=location_label,
+                )
+            else:
+                portal_name = f"{authority} — Citizen Grievance Portal"
+                department = authority
+                first_step = f"Visit the official {authority} website for {location_label}"
 
             verified_url = self._try_verify_official_portal(city, state)
             if verified_url:
                 portal_url = verified_url
             else:
                 portal_url = (
-                    f"Official portal could not be automatically verified. "
-                    f"Please use the official {authority} website for "
-                    f"{location_label}, or visit the local civic/ward office."
+                    f"The official portal URL for {location_label} "
+                    "could not be automatically verified. "
+                    f"Please visit the {authority} website directly."
                 )
 
-            first_step = f"Visit the official {authority} website for {location_label}"
-
         # must never replace the resolved local authority just because
-        escalation_step = (
-            "As an escalation/alternative route, the complaint can also be "
-            "lodged on CPGRAMS (https://pgportal.gov.in/) under the "
-            "'Municipal' / 'Urban Local Body' category"
+        escalation_step = translate_template(
+            "step_escalation_cpgrams_municipal", language,
         )
 
         new_steps = [first_step] + list(route.steps[1:]) + [escalation_step]

@@ -63,32 +63,6 @@ class TestCitationVerifierCoverage:
         result = verify_citations(answer, evidence_ids)
         assert result.is_valid is False
 
-    def test_verifier_with_repair_succeeds(self):
-        """Verifier with repair function can fix invalid answers."""
-        from app.citation_verifier import verify_and_repair
-
-        def repair(ans, evidence):
-            return f"Fixed answer [chunk:{evidence[0][:8]}]"
-
-        answer = "Bad [chunk:fffffffffff]"
-        evidence_ids = ["abc12345def"]
-        result = verify_and_repair(answer, evidence_ids, repair_fn=repair)
-        assert result.is_valid is True
-        assert result.repair_attempted is True
-
-    def test_verifier_with_repair_fails_returns_failure(self):
-        """Verifier returns CITATION_FAILURE when repair also fails."""
-        from app.citation_verifier import verify_and_repair
-
-        def bad_repair(ans, evidence):
-            return "Still bad [chunk:fffffffffff]"
-
-        answer = "Bad [chunk:fffffffffff]"
-        evidence_ids = ["abc12345def"]
-        result = verify_and_repair(answer, evidence_ids, repair_fn=bad_repair)
-        assert result.is_valid is False
-        assert result.repair_attempted is True
-
     def test_verifier_accepts_fullwidth_citation(self):
         """Full-width 【ID】 markers matching evidence are normalised and accepted."""
         from app.citation_verifier import verify_citations

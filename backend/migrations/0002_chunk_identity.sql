@@ -1,5 +1,6 @@
 -- Phase 2: Stable chunk identity
--- Adds stable_chunk_id to chunks and source_file to documents.
+-- Adds stable chunk identity and preserves document-level source_file for compatibility.
+-- The canonical PDF provenance field is chunks.source_file.
 -- Does NOT modify existing embeddings, chunk content, or the2,188 chunk rows
 -- beyond adding nullable columns and populating them.
 
@@ -67,7 +68,7 @@ language sql stable as $$
          d.state,
          d.domain,
          d.source_url,
-         d.source_file,
+         c.source_file,
          c.page,
          c.page,
          c.page,

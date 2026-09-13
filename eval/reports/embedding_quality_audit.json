@@ -1,7 +1,0 @@
-{
-  "provider": "JinaEmbeddingProvider",
-  "model": "unknown",
-  "dimension": 768,
-  "stored_dimension": 768,
-  "consistent": true
-}

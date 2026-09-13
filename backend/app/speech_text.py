@@ -12,6 +12,10 @@ passed citation verification. Verification still operates on the original
 transform is applied to every supported language — there is deliberately no
 language-specific branching here.
 
+It also provides ``build_grievance_speech_text`` which derives TTS text from the
+canonical structured grievance dict (the same data driving the Table/Card UI)
+rather than from the old ``format_draft_for_display`` prose.
+
 Order matters: clean AFTER verification, never before.
 """
 
@@ -112,3 +116,116 @@ def segment_speech(answer: str, answer_language: str) -> list[dict]:
         if seg:
             segments.append({"language": current_lang, "text": seg})
     return segments
+
+
+# ── Section-level label translations for grievance TTS ────────────────────
+# Localised labels for the top-level canonical grievance dict keys.
+# Used by ``build_grievance_speech_text`` to produce speech-friendly text
+# that mirrors the Table/Card UI, replacing the old ``format_draft_for_display``
+# prose which contained markdown artifacts.
+_GRIEVE_SECTION_LABELS: dict[str, dict[str, str]] = {
+    "category":       {"en": "Category",      "hi": "श्रेणी",      "gu": "શ્રેણી",     "mr": "श्रेणी",     "bn": "বিভাগ",    "ta": "வகை"},
+    "sub_category":   {"en": "Sub-category",   "hi": "उप-श्रेणी",   "gu": "ઉપ-શ્રેણી",  "mr": "उप-श्रेणी",  "bn": "উপ-বিভাগ",  "ta": "துணை வகை"},
+    "department":     {"en": "Department",     "hi": "विभाग",       "gu": "વિભાગ",      "mr": "विभाग",      "bn": "বিভাগ",    "ta": "துறை"},
+    "jurisdiction":   {"en": "Jurisdiction",   "hi": "क्षेत्राधिकार", "gu": "અધિકારક્ષેત્ર", "mr": "अधिकारक्षेत्र", "bn": "অধিকারক্ষেত্র", "ta": "அதிகார எல்லை"},
+    "title":          {"en": "Title",          "hi": "शीर्षक",       "gu": "શીર્ષક",      "mr": "शीर्षक",      "bn": "শিরোনাম",  "ta": "தலைப்பு"},
+    "description":    {"en": "Description",    "hi": "विवरण",       "gu": "વર્ણન",      "mr": "वर्णन",      "bn": "বিবরণ",    "ta": "விளக்கம்"},
+    "location":       {"en": "Location",       "hi": "स्थान",       "gu": "સ્થળ",       "mr": "स्थान",      "bn": "অবস্থান",  "ta": "இடம்"},
+}
+
+
+def _grievance_label(key: str, lang: str) -> str:
+    """Return a localised section label for a grievance dict key."""
+    entry = _GRIEVE_SECTION_LABELS.get(key)
+    if entry:
+        return entry.get(lang, entry.get("en", key))
+    return key.replace("_", " ").title()
+
+
+def build_grievance_speech_text(
+    grievance_dict: dict | None,
+    language: str = "en",
+    stage: str | None = None,
+    fields_schema: dict | None = None,
+) -> str:
+    """Build clean TTS text from the structured grievance representation.
+
+    Produces speech-friendly text from the same canonical ``grievance_dict``
+    that drives the Table/Card UI, replacing the old ``format_draft_for_display``
+    prose which contained markdown artifacts (**bold**, bullet markers,
+    emoji).
+
+    * System-generated labels are localised via ``_GRIEVE_SECTION_LABELS``
+      and ``translate_field_label()``.
+    * User-entered values (farmer_name, crop, description, etc.) are
+      preserved **verbatim** — never translated, truncated, or rewritten.
+    * URLs are preserved correctly.
+    * No markdown artifacts (``**``, ``•``, ``✅``, ``⚠``, ``📋``) are
+      included.
+    """
+    if not grievance_dict:
+        return ""
+
+    lang = language or "en"
+    lines: list[str] = []
+
+    def _add(key: str, value: str | None) -> None:
+        if value and str(value).strip():
+            lines.append(f"{_grievance_label(key, lang)}: {value}")
+
+    _add("category", grievance_dict.get("category"))
+    _add("sub_category", grievance_dict.get("sub_category"))
+    _add("department", grievance_dict.get("department"))
+    _add("jurisdiction", grievance_dict.get("jurisdiction"))
+    _add("title", grievance_dict.get("title"))
+
+    # description may be a dict {original, normalized, display} or a string
+    desc = grievance_dict.get("description")
+    if isinstance(desc, dict):
+        desc_text = desc.get("display") or desc.get("original") or desc.get("normalized")
+    else:
+        desc_text = desc
+    _add("description", desc_text)
+
+    # Structured fields — user-entered key/value pairs
+    fields = grievance_dict.get("fields")
+    if fields:
+        from app.grievance.translations import translate_field_label
+        for key, value in fields.items():
+            if value and str(value).strip():
+                label = translate_field_label(key, lang)
+                lines.append(f"{label}: {value}")
+
+    # Location block
+    loc = grievance_dict.get("location")
+    if loc:
+        loc_parts: list[str] = []
+        for loc_key in ("ward_number", "locality", "area", "city", "district", "state"):
+            val = loc.get(loc_key)
+            if val and str(val).strip():
+                loc_parts.append(str(val).strip())
+        if loc_parts:
+            lines.append(f"{_grievance_label('location', lang)}: {', '.join(loc_parts)}")
+
+    # Fields-stage follow-up question
+    if stage == "fields" and fields_schema:
+        mandatory = fields_schema.get("mandatory_fields") or []
+        for field in mandatory:
+            q = field.get("question")
+            if q and not field.get("value"):
+                lines.append(str(q))
+                break
+
+    # Complete-stage submission steps
+    if stage == "complete":
+        submission = grievance_dict.get("submission")
+        if submission:
+            steps = submission.get("steps") or []
+            for step in steps:
+                lines.append(str(step))
+            docs = submission.get("required_documents") or []
+            if docs:
+                for doc in docs:
+                    lines.append(str(doc))
+
+    return "\n".join(lines)

@@ -53,6 +53,10 @@ POST /voice                       ← full audio→STT→RAG→TTS pipeline
 POST /voice/transcribe            ← STT only
 POST /voice/speak                 ← TTS only
 POST /grievance                   ← grievance REST endpoint
+POST /grievances/finalize         ← finalize grievance (returns submission guide + translated data)
+POST /grievances/fields           ← get grievance field schema for a stage
+POST /grievances/clarify          ← answer clarification question
+POST /grievances/answer           ← answer a specific field
 GET  /conversations/{session_id}
 GET  /evidence/{...}
 GET  /health
@@ -93,7 +97,8 @@ SSE events: `thinking | token | metadata | done`
 - ✅ WebRAGService — 10-step pipeline (Tavily/Firecrawl → BM25 → Gemini rerank → verify)
 - ✅ Evidence gate, citation verifier, abstention
 - ✅ 6-language frontend (EN, HI, GU, MR, BN, TA) with chat, grievance, schemes, library pages
-- ✅ Document ingestion: 5 docs, 2188 chunks (pacs_governance, pacs_computerization, pmfby, financial_inclusion)
+- ✅ Document ingestion: 11 docs, 4778 chunks (pacs_governance, pacs_computerization, pmfby, financial_inclusion)
+- ✅ Grievance localization — `FIELD_PROMPTS` (30 prompts), `SUBMISSION_STEPS`, `FOLLOWUP_PREFIX`, `WORKFLOW_PREFIX` maps in `translations.py`; `translate_field_prompt()` for field questions; frontend field card labels via `dictionaries.ts` i18n lookup
 
 ---
 

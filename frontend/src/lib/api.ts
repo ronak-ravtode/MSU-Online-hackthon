@@ -5,6 +5,68 @@ export interface SpeechSegment {
   language: string;
 }
 
+export interface GrievanceLocation {
+  ward_number: string | null;
+  locality: string | null;
+  area: string | null;
+  city: string | null;
+  district: string | null;
+  state: string | null;
+}
+
+export interface GrievanceSubmission {
+  portal_name: string | null;
+  portal_url: string | null;
+  department: string | null;
+  level: string | null;
+  steps: string[];
+  required_documents: string[];
+  estimated_timeline: string | null;
+  disclaimer: string | null;
+}
+
+export interface GrievanceDescription {
+  /** Exact, untouched citizen input — never edited or overwritten. */
+  original: string;
+  /** Canonical English description used by the workflow and for submission. */
+  normalized: string;
+  /** User-facing description, localized to the user's preferred language.
+   *  Falls back to `normalized` (English) when no localization is available. */
+  display: string;
+}
+
+export interface Grievance {
+  reference: string | null;
+  category: string;
+  sub_category: string;
+  department: string;
+  jurisdiction: string;
+  title: string;
+  description: GrievanceDescription;
+  /** Structured field key/value pairs (e.g. farmer_name, application_id)
+   *  collected during the field wizard.  Preserves exact user-entered
+   *  values — never rewritten or normalized. */
+  fields: Record<string, string> | null;
+  location: GrievanceLocation;
+  submission: GrievanceSubmission | null;
+  /** Full English-language mirror of the grievance, attached only when the
+   *  user's selected language is non-English. Contains the complete canonical
+   *  English representation (classification, description, location, submission
+   *  steps, documents, timeline, disclaimer) so the frontend can render a
+   *  full-page English preview without any translation. */
+  english?: {
+    category: string;
+    sub_category: string;
+    department: string;
+    jurisdiction: string;
+    title: string;
+    description: string;
+    fields: Record<string, string> | null;
+    location: GrievanceLocation;
+    submission: GrievanceSubmission | null;
+  } | null;
+}
+
 export interface ChatResponse {
   answer: string;
   language: Locale;
@@ -31,10 +93,124 @@ export interface ChatResponse {
   }[];
   abstained: boolean;
   mode?: string;
+  grievance?: Grievance | null;
+  grievance_stage?: "classification" | "fields" | "complete" | null;
+  grievance_draft_summary?: {
+    category: string;
+    sub_category: string;
+    jurisdiction: string;
+    title: string;
+    description: string;
+    department: string;
+  } | null;
+  grievance_fields_schema?: {
+    mandatory_fields: GrievanceFieldSpec[];
+    optional_fields: GrievanceFieldSpec[];
+  } | null;
+  grievance_finalized?: boolean;
   conversation_id?: string;
   speech_text?: string;
   speech_segments?: SpeechSegment[];
   follow_up_question: string | null;
+}
+
+export interface GrievanceFieldSpec {
+  field: string;
+  field_label: string;
+  question: string;
+  input_type: "int" | "date" | "text";
+  mandatory: boolean;
+  value: string | null;
+}
+
+export interface GrievanceDetectResponse {
+  status: string;
+  response: string;
+  stage: string;
+  draft: {
+    category: string;
+    sub_category: string;
+    title: string;
+    description: string;
+    jurisdiction: string;
+    department: string;
+    required_fields: string[];
+    optional_fields: string[];
+  } | null;
+  is_complete: boolean;
+  submission_route: unknown;
+  evidence: unknown[];
+}
+
+export async function detectGrievance(payload: {
+  message: string;
+  conversation_id: string;
+  user_id: string;
+}): Promise<GrievanceDetectResponse> {
+  const r = await fetch("/api/grievance/detect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
+}
+
+export async function getGrievanceFields(
+  conversationId: string,
+  language: string,
+): Promise<{ status: string; mandatory_fields: GrievanceFieldSpec[]; optional_fields: GrievanceFieldSpec[] }> {
+  const r = await fetch(
+    `/api/grievance/fields?conversation_id=${encodeURIComponent(conversationId)}&language=${encodeURIComponent(language)}`,
+  );
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
+}
+
+export async function answerGrievanceField(payload: {
+  conversation_id: string;
+  field: string;
+  value: string;
+}): Promise<{ status: string }> {
+  const r = await fetch("/api/grievance/answer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
+}
+
+export async function finalizeGrievanceDraft(payload: {
+  conversation_id: string;
+  language: string;
+}): Promise<{ status: string; grievance: Grievance; mixed_language: boolean; speech_text?: string; speech_segments?: SpeechSegment[] }> {
+  const r = await fetch("/api/grievance/finalize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
+}
+
+export async function clarifyGrievance(payload: {
+  conversation_id: string;
+  complaint: string;
+  language: string;
+}): Promise<{
+  status: string;
+  stage: string;
+  draft_summary: ChatResponse["grievance_draft_summary"];
+  fields_schema: ChatResponse["grievance_fields_schema"];
+}> {
+  const r = await fetch("/api/grievance/clarify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
 }
 
 export async function sendChat(payload: {

@@ -9,6 +9,10 @@ from .models import (
     GrievanceDraft,
     GrievanceEntity,
     GrievanceSubCategory,
+    _normalize_ward,
+    _normalize_city,
+    _normalize_locality,
+    _normalize_area,
 )
 from .classifier import GrievanceClassifier
 from .entity_extractor import GrievanceEntityExtractor
@@ -76,7 +80,7 @@ class GrievanceDraftBuilder:
         optional_fields = self.entity_extractor.get_optional_fields(classification.sub_category)
 
         department = self._get_department(classification.category, classification.sub_category)
-        jurisdiction = "state"  # Most grievances are state-level
+        jurisdiction = "local" if classification.category == GrievanceCategory.MUNICIPAL else "state"
         state = self._extract_state(user_message)
 
         draft = GrievanceDraft(
@@ -279,32 +283,65 @@ class GrievanceDraftBuilder:
                 return state.title()
         return None
 
-    def is_draft_complete(self, draft: GrievanceDraft) -> bool:
-        """Check if draft has all required fields."""
-        missing_required, _ = self._detect_missing(draft)
-        return len(missing_required) == 0
-
     def format_draft_for_display(self, draft: GrievanceDraft) -> str:
-        """Format draft as human-readable text for display."""
+        """Format draft as human-readable text for display.
+
+        Uses canonical field names and normalised values so the
+        presentation never contains raw entity keys or label-prefixed
+        values like ``Ward Number: Ward Number 5``.
+        """
+        # --- resolve canonical location values with normalisation ---
+        def _alias(keys: list[str]) -> str | None:
+            for k in keys:
+                e = draft.entities.get(k)
+                if e and e.value and e.value.strip():
+                    return e.value.strip()
+            return None
+
+        ward = _normalize_ward(_alias(["ward_number", "ward_name"]) or "")
+        locality = _normalize_locality(_alias(["locality", "locality_name"]) or "")
+        area = _normalize_area(_alias(["area", "area_name"]) or "")
+        city = _normalize_city(_alias(["city", "city_name"]) or "")
+
         lines = [
             f"**Grievance Draft Reference: {draft.reference_number}**",
             f"**Category:** {draft.category.value.replace('_', ' ').title()}",
             f"**Sub-category:** {draft.sub_category.value.replace('_', ' ').title()}",
             f"**Department:** {draft.department}",
-            f"**Jurisdiction:** {draft.jurisdiction.title()}" + (f" - {draft.state}" if draft.state else ""),
+            f"**Jurisdiction:** {draft.jurisdiction.title()}",
             "",
             f"**Title:** {draft.title}",
             f"**Description:** {draft.description}",
-            "",
-            "**Extracted Information:**",
         ]
 
-        if draft.entities:
-            for key, entity in draft.entities.items():
-                label = key.replace('_', ' ').title()
+        # --- location section ---
+        location_lines = []
+        if ward:
+            location_lines.append(f"  • Ward Number: {ward}")
+        if locality:
+            location_lines.append(f"  • Locality: {locality}")
+        if area:
+            location_lines.append(f"  • Area: {area}")
+        if city:
+            location_lines.append(f"  • City: {city}")
+        if draft.state:
+            location_lines.append(f"  • State: {draft.state}")
+
+        if location_lines:
+            lines.append("")
+            lines.append("**Location:**")
+            lines.extend(location_lines)
+
+        # --- other extracted entities (skip location keys already shown) ---
+        _shown = {"ward_number", "ward_name", "locality", "locality_name",
+                  "area", "area_name", "city", "city_name"}
+        other = {k: v for k, v in (draft.entities or {}).items() if k not in _shown}
+        if other:
+            lines.append("")
+            lines.append("**Other Extracted Information:**")
+            for key, entity in other.items():
+                label = key.replace("_", " ").title()
                 lines.append(f"  • {label}: {entity.value}")
-        else:
-            lines.append("  (No structured information extracted yet)")
 
         missing_required, missing_optional = self._detect_missing(draft)
 

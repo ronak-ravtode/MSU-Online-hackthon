@@ -730,6 +730,28 @@ def _clear(supabase: Client) -> None:
     print(f"[clear] removed {len(old_docs)} document(s) and their chunks.")
 
 
+def _document_source_file(chunks: list[dict]) -> str | None:
+    """Return the corpus PDF filename only when the manifest provides one.
+
+    The filename is provenance data, not something to derive from a document
+    title or source_id.  If the canonical JSONL manifest does not contain a
+    source_file, keep it null so the UI cannot construct a misleading PDF link.
+    """
+    values = {
+        str(c.get("source_file")).strip()
+        for c in chunks
+        if c.get("source_file") and str(c.get("source_file")).strip()
+    }
+    if not values:
+        return None
+    if len(values) > 1:
+        raise ValueError(
+            "Multiple source_file values found for one document: "
+            + ", ".join(sorted(values))
+        )
+    return next(iter(values))
+
+
 def _ingest_document(supabase: Client, provider, doc_id: str, chunks: list[dict]) -> tuple[int, int]:
     meta = DOC_META.get(doc_id)
     if meta is None:
@@ -746,6 +768,7 @@ def _ingest_document(supabase: Client, provider, doc_id: str, chunks: list[dict]
         "domain": meta["domain"],
         "document_type": meta["document_type"],
         "source_url": meta["source_url"],
+        "source_file": _document_source_file(chunks),
         "effective_date": meta["effective_date"],
         "document_date": meta["document_date"],
         "verified_date": "2026-08-29",
@@ -792,6 +815,7 @@ def _ingest_document(supabase: Client, provider, doc_id: str, chunks: list[dict]
             "chunker_version": "mineru-content_list_v2",
             "ordinal": len(rows_to_embed),
             "content": text,
+            "source_file": c.get("source_file") or None,
             "metadata": {
                 "heading_path": heading_path,
                 "section": c.get("section", ""),

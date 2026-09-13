@@ -1,6 +1,5 @@
 "use client";
-import { useState } from "react";
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/Button";
@@ -8,8 +7,10 @@ import { Badge } from "@/components/ui/Badge";
 import { IconChat, IconMic, IconDoc, IconChevronRight } from "@/components/ui/Icons";
 import { Reveal } from "@/components/motion/Reveal";
 import { Stagger } from "@/components/motion/Stagger";
-import { schemes as rawSchemes, services as rawServices, libraryDocs as rawLibraryDocs } from "@/lib/data";
-import { deco } from "@/lib/data/deco";
+import Link from "next/link";
+import { schemes as rawSchemes } from "@/lib/data";
+import { services as rawServices } from "@/lib/data";
+import { libraryDocs as rawLibraryDocs } from "@/lib/data";
 
 const CAPABILITIES = [
   {
@@ -106,11 +107,11 @@ const LANGUAGES = ["English", "हिंदी", "ગુજરાતી", "म�
 const STARTERS = ["chat.starter1", "chat.starter2", "chat.starter3", "chat.starter4"];
 
 export default function HomePage() {
+  const { t, locale } = useI18n();
   const router = useRouter();
-  const { t } = useI18n();
   const [ask, setAsk] = useState("");
 
-  const [wordmark] = t("landing.tagline").split("—").map((s) => s.trim());
+  const wordmark = t("landing.tagline");
 
   const stats = [
     { n: rawSchemes.length, label: t("nav.schemes"), textKey: "landing.deskSchemes" },

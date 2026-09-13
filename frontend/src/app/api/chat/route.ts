@@ -1,12 +1,6 @@
-import { NextResponse } from "next/server";
-import type { Locale } from "@/lib/i18n/i18n";
-
 /**
- * Server API route /api/chat
- * Proxy to the Python RAG backend (port 8000). The backend is the sole source
- * of truth: it performs retrieval, the evidence gate, and citation verification.
- * On any backend failure we return an explicit unavailable response — we must
- * NOT substitute a hardcoded local answer, which would bypass grounding.
+ * Server API route /api/chat/stream
+ * SSE proxy to the Python RAG backend streaming endpoint.
  */
 
 export async function POST(req: Request) {
@@ -14,10 +8,14 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000/chat";
+  const backendUrl = process.env.BACKEND_API_URL?.replace(/\/chat$/, "/chat/stream")
+    || "http://localhost:8000/chat/stream";
 
   try {
     const backendRes = await fetch(backendUrl, {
@@ -26,18 +24,26 @@ export async function POST(req: Request) {
       body: JSON.stringify(body),
     });
 
-    if (backendRes.ok) {
-      return NextResponse.json(await backendRes.json());
+    if (!backendRes.ok) {
+      return new Response(
+        JSON.stringify({ error: "retrieval_backend_error", detail: `backend responded ${backendRes.status}` }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
     }
 
-    return NextResponse.json(
-      { error: "retrieval_backend_error", detail: `backend responded ${backendRes.status}` },
-      { status: 502 },
-    );
+    // Stream the SSE response through
+    return new Response(backendRes.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+      },
+    });
   } catch {
-    return NextResponse.json(
-      { error: "retrieval_backend_unavailable", detail: "backend unreachable" },
-      { status: 503 },
+    return new Response(
+      JSON.stringify({ error: "retrieval_backend_unavailable", detail: "backend unreachable" }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
     );
   }
 }

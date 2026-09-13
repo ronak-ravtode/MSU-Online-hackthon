@@ -129,7 +129,17 @@ _NEAR_CUE_RE = re.compile(
 )
 
 _LOCALITY_CUE_RE = re.compile(
-    r"\blocality\s+(?:is|:|-)\s*(.+)",
+    r"\blocality\s*(?:is\s*[:\-]?\s*|:\s*|-\s*)?(.+?)(?:\s+(?:city|town|state|district|zone|ward|pincode|landmark)\b|\s*$)",
+    re.IGNORECASE,
+)
+
+_CITY_CUE_RE = re.compile(
+    r"(?<!\w)(?:city|town)\s*(?:(?:is\s*[:\-]?\s*|:\s*|-\s*))?([A-Za-z][A-Za-z\s,]*?)(?:\s+(?:state|district|zone|ward|pincode|locality|landmark)\b|\s*$)",
+    re.IGNORECASE,
+)
+
+_CITY_SUFFIX_RE = re.compile(
+    r"^(?!.*(?:locality|ward|landmark|state|district|zone|pincode))(.+?)\s+(?:city|town)$",
     re.IGNORECASE,
 )
 
@@ -137,9 +147,73 @@ _LOCALITY_CUE_RE = re.compile(
 def _generic_cue_re(field_name: str) -> re.Pattern:
     alias = field_name.replace("_", " ")
     return re.compile(
-        rf"\b{re.escape(alias)}\s+(?:is|:|-)\s*(.+)",
+        rf"\b{re.escape(alias)}\s+(?:is\s*[:\-]?\s*|:\s*|-\s*)(.+)",
         re.IGNORECASE,
     )
+
+
+_CITY_TAIL_RE = re.compile(
+    r"([A-Za-z][A-Za-z.\s]*?)\s+(?:city|town)\b\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+_CITY_TAIL_EXCLUDED_WORDS = {
+    "locality",
+    "ward",
+    "landmark",
+    "state",
+    "district",
+    "zone",
+    "pincode",
+}
+
+
+def _backfill_city_from_locality(message: str, extracted: dict[str, str]) -> None:
+    """Deterministically recover ``city`` from an explicit "<name> City/Town"
+    suffix in the raw message whenever ``locality`` was extracted but
+    ``city`` was not.
+
+    This runs once per ``extract()`` call, regardless of which engine
+    (Gemini or the heuristic fallback) produced ``extracted`` -- Gemini can
+    correctly resolve ``locality`` from a sentence like "Locality is: Near
+    J.B. Modi Garden, Bharuch City." while treating "Bharuch City" as part
+    of the place name rather than emitting a separate ``city`` field. When
+    that happens, ``current_field == "locality"`` is already satisfied, so
+    the Gemini result is accepted and the heuristic fallback (which knows
+    how to split "<name> City" into locality + city) never runs.
+
+    Only fills ``city`` when one is explicitly found via a trailing
+    "<name> City"/"<name> Town" cue in the raw message; never invents a
+    value and never overwrites a city the extractor already found. Works
+    directly off the raw message rather than the (possibly differently
+    worded) ``locality`` value the engine returned, so it can't silently
+    drift from what the message actually says. No-op for non-English text,
+    since the cue is the English words "city"/"town".
+    """
+
+    if "locality" not in extracted or "city" in extracted:
+        return
+
+    for clause in _split_clauses(message) or [message]:
+        tail_match = _CITY_TAIL_RE.search(clause)
+
+        if not tail_match:
+            continue
+
+        name_part = tail_match.group(1).strip(" ,")
+
+        if not name_part:
+            continue
+
+        # "Near J.B. Modi Garden, Bharuch City" -> the city is the last
+        # comma-separated segment immediately before "City"/"Town".
+        segments = [s.strip() for s in name_part.split(",") if s.strip()]
+        candidate = segments[-1] if segments else name_part
+
+        if candidate and candidate.lower() not in _CITY_TAIL_EXCLUDED_WORDS:
+            extracted["city"] = _clean_value(candidate)
+
+        return
 
 
 def _split_clauses(text: str) -> list[str]:
@@ -147,9 +221,12 @@ def _split_clauses(text: str) -> list[str]:
 
     Commas are frequently part of a legitimate locality/value such as:
     'Manjalpur, Vadodara'.
+
+    Period splits require ≥2 lowercase letters before the period
+    to avoid breaking abbreviations like 'J.B.', 'Dr.', 'Mr.'.
     """
     parts = re.split(
-        r"\s+and\s+|;\s+|\.\s+",
+        r"\s+and\s+|;\s+|(?<=[a-z]{2})[.!?]\s+(?=[A-Z])",
         text.strip(),
     )
 
@@ -167,11 +244,15 @@ def _clean_value(value: str) -> str:
 _GEMINI_FIELD_PROPERTIES = {
     "ward_number": {
         "type": "string",
-        "description": "Ward number, e.g. 'Ward 12'.",
+        "description": "Ward number as digits only, e.g. '12'.",
     },
     "locality": {
         "type": "string",
         "description": "Locality or area name.",
+    },
+    "city": {
+        "type": "string",
+        "description": "City or town name, if explicitly provided.",
     },
     "zone": {
         "type": "string",
@@ -319,16 +400,42 @@ class GrievanceSemanticExtractor:
                     department=department,
                 )
 
+                # Defensive: pincode must be numeric even from Gemini.
+                if result is not None and "pincode" in result.extracted_fields:
+                    if not any(
+                        ch.isdigit()
+                        for ch in result.extracted_fields["pincode"]
+                    ):
+                        del result.extracted_fields["pincode"]
+
                 if (
                     result is not None
-                    and not result.extracted_fields
-                    and not result.invalid
-                    and not result.unrelated
+                    and (
+                        result.invalid
+                        or (
+                            not result.unrelated
+                            and not result.extracted_fields
+                        )
+                        or (
+                            current_field
+                            and current_field not in result.extracted_fields
+                        )
+                        or (
+                            current_field
+                            and result.unrelated
+                        )
+                    )
                 ):
                     logger.warning(
-                        "Gemini returned no extracted fields for "
-                        "current_field=%r; falling back to heuristic.",
+                        "Gemini returned no/incorrect fields for "
+                        "current_field=%r (got %s, invalid=%s, "
+                        "unrelated=%s); falling back to heuristic.",
                         current_field,
+                        sorted(result.extracted_fields)
+                        if result.extracted_fields
+                        else [],
+                        result.invalid,
+                        result.unrelated,
                     )
                     result = None
 
@@ -345,6 +452,13 @@ class GrievanceSemanticExtractor:
                 current_field=current_field,
                 user_message=message,
             )
+
+        # Deterministic backfill: run regardless of which engine produced
+        # `result` -- Gemini's success (locality resolved, current_field
+        # satisfied) must not suppress the same city recovery the heuristic
+        # fallback already knows how to do. See docstring for details.
+        if result is not None and not result.unrelated and not result.invalid:
+            _backfill_city_from_locality(message, result.extracted_fields)
 
         logger.debug(
             "Grievance semantic extraction result: "
@@ -504,6 +618,13 @@ class GrievanceSemanticExtractor:
 
             extracted[str(key)] = value_text
 
+        # Defensive: pincode must be numeric; reject non-numeric values
+        # that Gemini may have incorrectly assigned (e.g. "Bharuch city").
+        if "pincode" in extracted and not any(
+            ch.isdigit() for ch in extracted["pincode"]
+        ):
+            del extracted["pincode"]
+
         logger.debug(
             "Gemini grievance extraction parsed: "
             "current_field=%r extracted_fields=%r invalid=%r "
@@ -549,9 +670,7 @@ class GrievanceSemanticExtractor:
                 ward_match = _WARD_NUMBER_RE.search(clause)
 
                 if ward_match:
-                    extracted["ward_number"] = (
-                        f"Ward {ward_match.group(1)}"
-                    )
+                    extracted["ward_number"] = ward_match.group(1)
 
             if "landmark" not in extracted:
 
@@ -578,9 +697,50 @@ class GrievanceSemanticExtractor:
                 locality_match = _LOCALITY_CUE_RE.search(clause)
 
                 if locality_match:
-                    extracted["locality"] = _clean_value(
+                    raw_locality = _clean_value(
                         locality_match.group(1)
                     )
+                    extracted["locality"] = raw_locality
+                    # If locality contains a comma, extract city from
+                    # the last segment (e.g. "Manjalpur, Vadodara"
+                    # → city="Vadodara").
+                    if "city" not in extracted and "," in raw_locality:
+                        parts = [p.strip() for p in raw_locality.split(",")]
+                        if len(parts) >= 2:
+                            extracted["city"] = parts[-1]
+
+                    # If locality stopped at city/town, extract city from
+                    # tail (shared with the Gemini-path backfill above).
+                    if "city" not in extracted:
+                        _backfill_city_from_locality(clause, extracted)
+
+                        # Canonical values must not repeat the city inside
+                        # locality (e.g. locality should read "Near J.B.
+                        # Modi Garden", not "Near J.B. Modi Garden,
+                        # Bharuch") once city has been split out.
+                        if "city" in extracted:
+                            city_value = extracted["city"]
+                            loc_value = extracted["locality"]
+                            suffix = f", {city_value}"
+                            if loc_value.lower().endswith(suffix.lower()):
+                                extracted["locality"] = loc_value[
+                                    : -len(suffix)
+                                ].strip()
+
+            if "city" not in extracted:
+
+                city_match = _CITY_CUE_RE.search(clause)
+
+                if city_match:
+                    extracted["city"] = _clean_value(
+                        city_match.group(1)
+                    )
+                else:
+                    suffix_match = _CITY_SUFFIX_RE.match(clause.strip())
+                    if suffix_match:
+                        extracted["city"] = _clean_value(
+                            suffix_match.group(1)
+                        )
 
             if current_field and current_field not in extracted:
 
@@ -641,18 +801,13 @@ class GrievanceSemanticExtractor:
                 needs_clarification=True
             )
 
+        # Defensive: pincode must be numeric; reject non-numeric values
+        # that were incorrectly assigned (e.g. "Bharuch city" into pincode).
+        if "pincode" in extracted and not any(
+            ch.isdigit() for ch in extracted["pincode"]
+        ):
+            del extracted["pincode"]
+
         return SemanticExtractionResult(
             extracted_fields=extracted
         )
-
-
-_extractor: GrievanceSemanticExtractor | None = None
-
-
-def get_semantic_extractor() -> GrievanceSemanticExtractor:
-    global _extractor
-
-    if _extractor is None:
-        _extractor = GrievanceSemanticExtractor()
-
-    return _extractor

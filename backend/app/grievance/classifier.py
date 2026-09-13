@@ -1,9 +1,21 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import os
+import re
 from dataclasses import dataclass
 
+import httpx
+
 from .models import GrievanceCategory, GrievanceSubCategory
+
+logger = logging.getLogger(__name__)
+
+# When keyword confidence falls below this threshold, attempt
+# Gemini-based semantic classification.
+_GEMINI_CLASSIFICATION_THRESHOLD = 0.50
 
 
 @dataclass
@@ -34,9 +46,12 @@ CATEGORY_KEYWORDS = {
     ],
     GrievanceCategory.MUNICIPAL: [
         "municipal", "municipality", "corporation", "nagar nigam",
-        "garbage", "drainage", "sewage", "street light",
+        "garbage", "waste", "trash", "rubbish", "sanitation",
+        "drainage", "sewage", "drain", "blocked drain", "clogged drain",
+        "street light", "streetlight", "lamp post",
         "building permit", "property tax", "house tax",
-        "water logging", "road", "footpath",
+        "water logging", "water draining", "not draining", "flooding",
+        "road", "footpath", "pothole", "potholes",
     ],
     GrievanceCategory.ELECTRICITY: [
         "electricity", "electric", "power", "discom", "billing",
@@ -112,7 +127,7 @@ SUBCATEGORY_KEYWORDS = {
     GrievanceSubCategory.COMPENSATION_DELAY: ["compensation", "land acquisition", "rehabilitation"],
 
     GrievanceSubCategory.GARBAGE: ["garbage", "waste", "trash", "dustbin", "cleanliness"],
-    GrievanceSubCategory.DRAINAGE: ["drainage", "sewage", "drain", "water logging", "flooding"],
+    GrievanceSubCategory.DRAINAGE: ["drainage", "sewage", "drain", "water logging", "flooding", "blocked drain", "clogged drain", "not draining", "water draining"],
     GrievanceSubCategory.STREET_LIGHT: ["street light", "streetlight", "lamp post", "dark street"],
     GrievanceSubCategory.BUILDING_PERMIT: ["building permit", "construction permit", "building plan", "approval"],
     GrievanceSubCategory.PROPERTY_TAX: ["property tax", "house tax", "municipal tax"],
@@ -165,8 +180,32 @@ SUBCATEGORY_KEYWORDS = {
 }
 
 
+# ── Valid classification targets for Gemini ────────────────────────────────────
+_CATEGORY_VALUES = {c.value for c in GrievanceCategory}
+_SUBCATEGORY_VALUES = {s.value for s in GrievanceSubCategory}
+
+
 class GrievanceClassifier:
-    """Classifies grievance into category and sub-category."""
+    """Classifies grievance into category and sub-category.
+
+    Uses a fast keyword-count classifier first.  When keyword
+    confidence is low (below ``_GEMINI_CLASSIFICATION_THRESHOLD``),
+    attempts semantic classification via the Gemini API — the same
+    Gemini instance already configured for grievance field extraction.
+    Falls back to keyword results if Gemini is unavailable or fails.
+    """
+
+    def __init__(self) -> None:
+        from app.config import get_settings
+        settings = get_settings()
+        self._gemini_model = os.getenv(
+            "GRIEVANCE_GEMINI_MODEL",
+            settings.grievance_gemini_model,
+        )
+        self._api_key = os.getenv("GEMINI_API_KEY")
+        self._gemini_enabled = bool(self._api_key)
+
+    # ── Public API ─────────────────────────────────────────────────────────────
 
     def classify(self, text: str) -> GrievanceClassification:
         text_lower = text.lower().strip()
@@ -179,14 +218,42 @@ class GrievanceClassifier:
                 matched_keywords=[],
             )
 
-        category_scores = {}
-        category_matched = {}
+        # 1. Fast keyword classification
+        kw_result = self._classify_by_keywords(text_lower)
+
+        # 2. If keyword confidence is sufficient, return immediately
+        if kw_result.confidence >= _GEMINI_CLASSIFICATION_THRESHOLD:
+            return kw_result
+
+        # 3. Attempt Gemini-based semantic classification
+        gemini_result = self._classify_via_gemini(text)
+        if gemini_result is not None:
+            logger.info(
+                "Gemini classification overridden keyword result "
+                "(kw=%s/%s conf=%.2f -> gemini=%s/%s conf=%.2f)",
+                kw_result.category.value,
+                kw_result.sub_category.value,
+                kw_result.confidence,
+                gemini_result.category.value,
+                gemini_result.sub_category.value,
+                gemini_result.confidence,
+            )
+            return gemini_result
+
+        # 4. Gemini unavailable or failed — use keyword result
+        return kw_result
+
+    # ── Keyword classifier (deterministic) ─────────────────────────────────────
+
+    def _classify_by_keywords(self, text_lower: str) -> GrievanceClassification:
+        category_scores: dict[GrievanceCategory, int] = {}
+        category_matched: dict[GrievanceCategory, list[str]] = {}
 
         for category, keywords in CATEGORY_KEYWORDS.items():
             score = 0
             matched = []
             for keyword in keywords:
-                if keyword in text_lower:
+                if self._keyword_matches(keyword, text_lower):
                     score += 1
                     matched.append(keyword)
             if score > 0:
@@ -205,15 +272,15 @@ class GrievanceClassifier:
         top_score = category_scores[top_category]
         matched_keywords = category_matched.get(top_category, [])
 
-        subcategory_scores = {}
-        subcategory_matched = {}
+        subcategory_scores: dict[GrievanceSubCategory, int] = {}
+        subcategory_matched: dict[GrievanceSubCategory, list[str]] = {}
 
         for subcat, keywords in SUBCATEGORY_KEYWORDS.items():
             if self._is_subcategory_relevant(subcat, top_category):
                 score = 0
                 matched = []
                 for keyword in keywords:
-                    if keyword in text_lower:
+                    if self._keyword_matches(keyword, text_lower):
                         score += 1
                         matched.append(keyword)
                 if score > 0:
@@ -238,6 +305,141 @@ class GrievanceClassifier:
             confidence=confidence,
             matched_keywords=list(set(matched_keywords)),
         )
+
+    def _keyword_matches(self, keyword: str, text_lower: str) -> bool:
+        """Match keyword with word-boundary awareness for short keywords.
+
+        For keywords <= 3 characters (e.g., 'rti', 'fir', 'pf', 'esi'),
+        uses word-boundary regex to avoid false substring matches.
+        For longer keywords, uses simple substring matching.
+        """
+        if len(keyword) <= 3:
+            pattern = r'\b' + re.escape(keyword) + r'\b'
+            return bool(re.search(pattern, text_lower))
+        return keyword in text_lower
+
+    # ── Gemini semantic classifier ─────────────────────────────────────────────
+
+    def _classify_via_gemini(self, text: str) -> GrievanceClassification | None:
+        """Ask Gemini to infer the grievance category and sub-category
+        from the narrative text.  Returns ``None`` if Gemini is
+        unavailable, fails, or returns an unrecognised value."""
+        if not self._gemini_enabled or not self._api_key:
+            return None
+
+        system_prompt = (
+            "You are a grievance classifier for an Indian citizen "
+            "assistance chatbot.\n\n"
+            "Given the citizen's complaint narrative, determine the "
+            "grievance category and sub-category.\n\n"
+            "You MUST return ONLY a JSON object with two fields:\n"
+            '  "category": one of the allowed category values\n'
+            '  "sub_category": one of the allowed sub-category values\n'
+            '  "confidence": a number between 0.0 and 1.0\n\n'
+            "Rules:\n"
+            "1. Infer intent from the meaning of the complaint, not "
+            "from keyword presence.\n"
+            "2. 'garbage', 'waste', 'trash', 'rubbish', 'collecting', "
+            "'piling up', 'not collected', 'smell' near waste → MUNICIPAL / GARBAGE\n"
+            "3. 'road', 'pothole', 'holes', 'deteriorated', 'broken', "
+            "'dangerous', 'driving', 'swerve' about road surface → MUNICIPAL / ROAD_DAMAGE\n"
+            "4. 'streetlight', 'street light', 'lamp', 'not working', "
+            "'dark', 'light out' → MUNICIPAL / STREET_LIGHT\n"
+            "5. 'drainage', 'drain', 'water sitting', 'flooding', "
+            "'water logging', 'not draining' → MUNICIPAL / DRAINAGE\n"
+            "6. 'water supply', 'no water', 'tap' about supply → WATER / SUPPLY_ISSUE\n"
+            "7. If the complaint clearly fits a specific sub-category, "
+            "set confidence >= 0.85.\n"
+            "8. Only set confidence < 0.6 if the complaint is genuinely "
+            "ambiguous across multiple categories.\n"
+        )
+
+        user_prompt = json.dumps(
+            {
+                "complaint": text,
+                "allowed_categories": sorted(_CATEGORY_VALUES),
+                "allowed_subcategories": sorted(_SUBCATEGORY_VALUES),
+            },
+            ensure_ascii=False,
+        )
+
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/"
+            f"models/{self._gemini_model}:generateContent?key={self._api_key}"
+        )
+
+        payload = {
+            "contents": [
+                {"role": "user", "parts": [{"text": system_prompt + "\n\n" + user_prompt}]}
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "category": {"type": "STRING"},
+                        "sub_category": {"type": "STRING"},
+                        "confidence": {"type": "NUMBER"},
+                    },
+                    "required": ["category", "sub_category", "confidence"],
+                },
+            },
+        }
+
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                response = client.post(url, json=payload)
+                response.raise_for_status()
+
+            data = response.json()
+            content = (
+                data.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text")
+            )
+            if not content:
+                return None
+
+            parsed = json.loads(content)
+            cat_str = (parsed.get("category") or "").strip().lower()
+            sub_str = (parsed.get("sub_category") or "").strip().lower()
+            conf = float(parsed.get("confidence", 0.7))
+
+            if cat_str not in _CATEGORY_VALUES or sub_str not in _SUBCATEGORY_VALUES:
+                logger.warning(
+                    "Gemini returned invalid classification: "
+                    "category=%r sub_category=%r",
+                    cat_str,
+                    sub_str,
+                )
+                return None
+
+            category = GrievanceCategory(cat_str)
+            sub_category = GrievanceSubCategory(sub_str)
+
+            # Verify subcategory belongs to category
+            if not self._is_subcategory_relevant(sub_category, category):
+                logger.warning(
+                    "Gemini subcategory %s not relevant to category %s; "
+                    "using keyword fallback",
+                    sub_str,
+                    cat_str,
+                )
+                return None
+
+            return GrievanceClassification(
+                category=category,
+                sub_category=sub_category,
+                confidence=round(conf, 2),
+                matched_keywords=[f"gemini:{sub_str}"],
+            )
+
+        except Exception:
+            logger.exception("Gemini classification failed; using keyword fallback")
+            return None
+
+    # ── Helpers ─────────────────────────────────────────────────────────────────
 
     def _is_subcategory_relevant(self, subcat: GrievanceSubCategory, category: GrievanceCategory) -> bool:
         """Check if subcategory belongs to category."""

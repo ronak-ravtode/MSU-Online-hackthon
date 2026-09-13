@@ -35,17 +35,26 @@ Evidence-grounded, multilingual citizen-assistance platform for cooperative gove
              |  /conversations           |
              |  /evidence  /grievance    |
              |  /health /health/providers|
-             +------+------+------+------+
-                    |      |      |
-          +---------+      |      +----------+
-          v                v                 v
+              +------+------+------+------+
+                     |      |      |
+           +---------+      |      +----------+
+           v                v                 v
  +-----------------+ +----------+  +------------------+
  | Language Layer  | | Domain   |  | Grievance        |
  | detect_query_   | | AnchorSt.|  | Workflow         |
  | languages()     | | keyword  |  | 9-stage state    |
  | Sarvam transl.  | | + cosine |  | machine          |
  | Azure fallback  | | classify |  | (Supabase-backed)|
- +-----------------+ +----------+  +------------------+
+ +-----------------+ +----------+  +--------+---------+
+                                          |
+                                   Output boundary
+                                   translation layer
+                                   (user values kept
+                                    verbatim)
+                                          |
+                                          v
+                                  Translated grievance
+                                  response + metadata
                           |
                           v
              +---------------------------+
@@ -115,7 +124,15 @@ POST /chat (or /chat/stream for SSE)
   │   MISSING_FIELDS→FOLLOWUP→DRAFT_READY→SUBMISSION_GUIDE→                  │
   │   STATUS_LOOKUP→COMPLETE                                                  │
   │   Persists to Supabase `grievance_states` table                           │
-  │   Returns WorkflowResult.response                                         │
+  │   Returns WorkflowResult (English-only internal state)                    │
+  │                                                                           │
+  │   Output translation boundary:                                            │
+  │     draft_summary values → translated                                     │
+  │     canonical dict top-level → translated                                 │
+  │     submission data (portal, steps, docs, timeline) → translated          │
+  │     field labels → translated via FIELD_LABELS lookup                     │
+  │     user-entered values → preserved verbatim                              │
+  │     URLs → preserved unchanged                                            │
   │                                                                           │
   ├─[if domain == "out_of_scope"]──────────────────────────────────────────── │
   │   Return scope message, abstained=True                                    │
@@ -326,7 +343,40 @@ State persisted to Supabase `grievance_states` (upsert on `conversation_id`).
 
 ---
 
-## 14. Non-functional constraints
+## 14. Grievance localization architecture
+
+All grievance workflow processing happens in **English only**. Translation is applied at the output boundary, ensuring user-entered values are preserved verbatim while system-generated text is translated.
+
+**Backend translation points:**
+
+```
+_grievance_message()
+  ├─ draft_summary values        → title, description translated
+  ├─ top-level canonical dict    → category, sub_category, department, jurisdiction, title
+  ├─ submission data             → portal_name, department, level, steps, documents, timeline, disclaimer
+  └─ field labels                → field_label from FIELD_LABELS dict (150+ entries)
+
+/grievances/finalize endpoint    → same submission + canonical dict translation
+/grievances/clarify endpoint     → draft_summary + field_label translation
+```
+
+**User value preservation rules:**
+- User-entered text (title, description, answers) → copied verbatim, never translated by LLM
+- URLs → preserved unchanged
+- Submission metadata (portal names, department names, steps) → translated via provider chain
+- Field labels → translated via `field_detector.FIELD_LABELS` lookup (not LLM)
+
+**Frontend translation points:**
+- `GrievanceClassificationPanel`: tab labels use `t()` from dictionaries
+- `GrievanceFieldPanel`: tab labels use `f.field_label || f.field.replace(/_/g, " ")`
+- `GrievanceCard`: disclaimer, buttons use `t()`
+- `GrievanceFlow`: wizard submit uses `t("grievanceWizard.submitting")`
+
+**Supported languages:** `en | hi | gu | mr | bn | ta` — same as chat.
+
+---
+
+## 15. Non-functional constraints
 
 - No personal GPU; free-tier / cloud-only
 - Every external provider call has a strict timeout

@@ -125,6 +125,7 @@ class TestChatEndpoint:
         assert data["abstained"] is True
         assert data["domain"] == "unknown"
 
+    @patch("app.routes.chat.ensure_conversation")
     @patch("app.routes.chat._get_grievance_workflow")
     @patch("app.routes.chat._get_query_classifier")
     @patch("app.routes.chat.get_anchor_store")
@@ -134,11 +135,13 @@ class TestChatEndpoint:
     @patch("app.routes.chat.trim_messages")
     @patch("app.routes.chat.resolve_and_remember")
     @patch("app.routes.chat.detect_query_languages")
+    @patch("app.routes.chat._has_active_grievance")
     def test_grievance_query_delegates_to_workflow(
-        self, mock_detect, mock_resolve, mock_trim, mock_save,
+        self, mock_has_active, mock_detect, mock_resolve, mock_trim, mock_save,
         mock_history, mock_embed_provider, mock_anchor,
-        mock_classifier, mock_workflow,
+        mock_classifier, mock_workflow, mock_ensure_conversation,
     ):
+        mock_has_active.return_value = False
         mock_detect.return_value = {"dominant": "en"}
         mock_resolve.return_value = "en"
         mock_history.return_value = []
@@ -380,6 +383,7 @@ class TestChatStreamEndpoint:
         assert "out_of_scope" in text
         assert '"abstained": true' in text
 
+    @patch("app.routes.chat.ensure_conversation")
     @patch("app.routes.chat._get_grievance_workflow")
     @patch("app.routes.chat._get_query_classifier")
     @patch("app.routes.chat.get_anchor_store")
@@ -389,11 +393,13 @@ class TestChatStreamEndpoint:
     @patch("app.routes.chat.trim_messages")
     @patch("app.routes.chat.resolve_and_remember")
     @patch("app.routes.chat.detect_query_languages")
+    @patch("app.routes.chat._has_active_grievance")
     def test_stream_grievance(
-        self, mock_detect, mock_resolve, mock_trim, mock_save,
+        self, mock_has_active, mock_detect, mock_resolve, mock_trim, mock_save,
         mock_history, mock_embed_provider, mock_anchor,
-        mock_classifier, mock_workflow,
+        mock_classifier, mock_workflow, mock_ensure_conversation,
     ):
+        mock_has_active.return_value = False
         mock_detect.return_value = {"dominant": "en"}
         mock_resolve.return_value = "en"
         mock_history.return_value = []
@@ -526,4 +532,122 @@ class TestConfidenceLevel:
     def test_none(self):
         from app.routes.chat import _confidence_level
         assert _confidence_level(0.0) == "none"
+
+
+# ── Tests: active grievance workflow priority (multi-turn routing) ──────────
+
+
+class TestActiveGrievancePriority:
+    """Regression: second-turn 'Yes' must route to existing grievance workflow."""
+
+    @patch("app.routes.chat._process_grievance_message")
+    @patch("app.routes.chat._has_active_grievance")
+    def test_active_grievance_bypasses_classification(
+        self, mock_has_active, mock_process,
+    ):
+        """When an active grievance exists, the message goes to the workflow
+        regardless of what QueryClassifier returns."""
+        mock_has_active.return_value = True
+        mock_process.return_value = "Thank you. What is the date of the incident?"
+
+        resp = client.post("/chat", json={
+            "question": "Yes",
+            "session_id": "multi-turn-session",
+            "language": "en",
+        })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["domain"] == "grievance"
+        assert data["mode"] == "grievance"
+        mock_process.assert_called_once()
+
+    @patch("app.routes.chat._process_grievance_message")
+    @patch("app.routes.chat._has_active_grievance")
+    def test_completed_grievance_does_not_trigger_workflow(
+        self, mock_has_active, mock_process,
+    ):
+        """A completed grievance should NOT route to the workflow."""
+        mock_has_active.return_value = False
+        mock_process.return_value = "should not be called"
+
+        resp = client.post("/chat", json={
+            "question": "Yes",
+            "session_id": "completed-session",
+            "language": "en",
+        })
+
+        assert resp.status_code == 200
+        mock_process.assert_not_called()
+
+    @patch("app.routes.chat._has_active_grievance")
+    def test_stream_active_grievance_bypasses_classification(
+        self, mock_has_active,
+    ):
+        """Streaming route: active grievance state routes to workflow."""
+        mock_has_active.return_value = True
+
+        with patch("app.routes.chat._process_grievance_message") as mock_process:
+            mock_process.return_value = "What is the date of the incident?"
+
+            resp = client.post("/chat/stream", json={
+                "question": "Yes",
+                "session_id": "multi-turn-stream",
+                "language": "en",
+            })
+
+            assert resp.status_code == 200
+            text = resp.text
+            assert "grievance" in text
+            assert "date" in text.lower()
+            mock_process.assert_called_once()
+
+    @patch("app.routes.chat._has_active_grievance")
+    def test_stream_completed_grievance_does_not_trigger_workflow(
+        self, mock_has_active,
+    ):
+        """Streaming route: completed grievance does NOT route to workflow."""
+        mock_has_active.return_value = False
+
+        with patch("app.routes.chat._get_rag_orchestrator") as mock_orch:
+            from app.contracts import RAGResponse, ConfidenceBand
+            mock_orch.return_value.run = AsyncMock(return_value=RAGResponse(
+                answer="PMFBY is a scheme.",
+                language="en", domain="pmfby", confidence=0.85,
+                confidence_level=ConfidenceBand.HIGH,
+                citations=[], abstained=False, speech_text="PMFBY is a scheme.",
+                speech_segments=[], follow_up_question=None,
+                mode="dual_rag", conversation_id="completed-stream",
+            ))
+
+            with patch("app.routes.chat._get_query_classifier") as mock_cls, \
+                 patch("app.routes.chat.get_anchor_store") as mock_anchor, \
+                 patch("app.routes.chat.get_embedding_provider") as mock_emb, \
+                 patch("app.routes.chat.get_history") as mock_hist, \
+                 patch("app.routes.chat.save_message"), \
+                 patch("app.routes.chat.trim_messages"), \
+                 patch("app.routes.chat.touch_session"), \
+                 patch("app.routes.chat.resolve_and_remember") as mock_resolve, \
+                 patch("app.routes.chat.detect_query_languages") as mock_detect:
+                mock_detect.return_value = {"dominant": "en"}
+                mock_resolve.return_value = "en"
+                mock_hist.return_value = []
+                mock_emb.return_value.embed_texts.return_value = [[0.1] * 768]
+                mock_anchor.return_value.classify.return_value = ("pmfby", 0.9)
+                mock_anchor.return_value.rules = {}
+                cls = MagicMock()
+                cls.domain = "pmfby"
+                cls.intent = "INFORMATIONAL"
+                cls.confidence = 0.85
+                mock_cls.return_value.classify.return_value = cls
+
+                resp = client.post("/chat/stream", json={
+                    "question": "Yes",
+                    "session_id": "completed-stream",
+                    "language": "en",
+                })
+
+                assert resp.status_code == 200
+                text = resp.text
+                assert "pmfby" in text.lower() or "PMFBY" in text
 

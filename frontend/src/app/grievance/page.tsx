@@ -1,203 +1,252 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { useI18n } from "@/lib/i18n/provider";
-import { getGrievanceCategories, submitGrievance, getGrievanceStatus, type GrievanceRecord } from "@/lib/data";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Stepper } from "@/components/ui/Stepper";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
-import { Reveal } from "@/components/motion/Reveal";
-import { IconShield, IconChevronRight } from "@/components/ui/Icons";
+import type { Grievance } from "@/lib/api";
+import {
+  IconCheck,
+  IconBuilding,
+  IconPin,
+  IconDoc,
+  IconClock,
+  IconAlertTriangle,
+  IconChevronRight,
+} from "@/components/ui/Icons";
 
-type Step = 0 | 1 | 2;
+/**
+ * Full-page English draft view.
+ *
+ * Reached from the "Open full English draft page" link on
+ * `GrievanceCard` (only rendered when the user's language is not
+ * English). Everything on this page — field labels, the description,
+ * classification, submission steps, documents, timeline, and
+ * disclaimer — is hard-coded English, deliberately bypassing `useI18n()`
+ * so the page never mixes in the user's selected UI language, even if
+ * they switch it after opening this tab.
+ *
+ * Data source: the `grievance.english` mirror the backend attaches
+ * additively (see `_process_grievance_message` in `chat.py` and
+ * `/finalize` in `grievance.py`). `GrievanceCard` stashes it in
+ * `sessionStorage` right before navigating here — this page never
+ * calls the API itself, so it stays purely additive and cannot
+ * desync from, or re-trigger, the grievance workflow.
+ */
 
-export default function GrievancePage() {
-  const { t } = useI18n();
-  const categories = getGrievanceCategories();
-  const [step, setStep] = useState<Step>(0);
-  const [categoryId, setCategoryId] = useState(categories[0].id);
-  const [details, setDetails] = useState("");
-  const [name, setName] = useState("");
-  const [contact, setContact] = useState("");
-  const [detailsError, setDetailsError] = useState(false);
-  const [record, setRecord] = useState<GrievanceRecord | null>(null);
+function Divider() {
+  return <div className="my-3 border-t border-[var(--border-soft)]" />;
+}
 
-  function goNext() {
-    if (!details.trim()) {
-      setDetailsError(true);
-      return;
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-faint)]">
+      {children}
+    </p>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start justify-between gap-3 py-1 text-sm">
+      <span className="shrink-0 text-[var(--text-faint)]">{label}</span>
+      <span className="text-right font-medium text-[var(--ink)]">{value}</span>
+    </div>
+  );
+}
+
+const STORAGE_KEY = "grievance-english-draft";
+
+export default function EnglishGrievanceDraftPage() {
+  const [grievance] = useState<Grievance | null>(() => {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as Grievance) : null;
+    } catch {
+      return null;
     }
-    setDetailsError(false);
-    setStep(2);
-  }
+  });
 
-  const steps = [t("grievance.step1"), t("grievance.step2"), t("grievance.step3")];
-
-  function submit() {
-    const rec = submitGrievance({
-      categoryId,
-      details: details.trim(),
-      name: name.trim() || undefined,
-      contact: contact.trim() || undefined,
-    });
-    setRecord(rec);
-  }
-
-  if (record) {
-    const track = getGrievanceStatus(record.id);
+  // No draft found (direct link visit, sessionStorage cleared, private
+  // browsing, etc.) — send the citizen back rather than show a blank page.
+  if (!grievance) {
     return (
       <div className="rail-frame page-container">
-        <Reveal trigger="load">
-          <h1 className="display text-3xl tracking-tight text-[var(--ink)] md:text-4xl">{t("grievance.title")}</h1>
-          <p className="mt-1 text-[var(--text-body)]">{t("grievance.subtitle")}</p>
-        </Reveal>
-        <div className="mx-auto mt-8 max-w-xl">
-          <div className="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--canvas)] p-8 text-center shadow-[var(--shadow-md)]">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent-tint-soft)] text-[var(--state-success)]">
-              <IconShield className="h-8 w-8" />
-            </div>
-            <h2 className="display mt-4 text-2xl tracking-tight text-[var(--ink)] md:text-3xl">{t("grievance.successTitle")}</h2>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">{t("grievance.complaintIdLabel")}</p>
-            <p className="mt-1 font-mono text-xl font-semibold text-[var(--accent-primary)]">{record.id}</p>
-            <div className="mt-4">
-              {track ? <Badge tone="neutral">{t(`status.${track.status}`)}</Badge> : null}
-            </div>
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <Link href="/grievance/status">
-                <Button variant="secondary">
-                  {t("common.trackStatus")}
-                  <IconChevronRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
+        <h1 className="display text-2xl tracking-tight text-[var(--ink)]">
+          English draft not available
+        </h1>
+        <p className="mt-2 text-[var(--text-body)]">
+          Open this page from the &ldquo;Open full English draft page&rdquo; link on your
+          grievance card — it isn&apos;t meant to be visited directly.
+        </p>
+        <Link
+          href="/grievance"
+          className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-[var(--accent-primary)] underline decoration-dotted hover:opacity-80"
+        >
+          Back to Grievance
+        </Link>
       </div>
     );
   }
 
+  const location = grievance.location;
+  const submission = grievance.submission;
+  const description = grievance.description;
+  const hasAnyLocation =
+    !!location &&
+    (location.ward_number || location.locality || location.area || location.city || location.state);
+
   return (
     <div className="rail-frame page-container">
-      <Reveal trigger="load">
-        <p className="eyebrow">{t("nav.grievance")}</p>
-        <h1 className="display mt-3 text-3xl tracking-tight text-[var(--ink)] md:text-4xl">{t("grievance.title")}</h1>
-        <p className="mt-2 text-[var(--text-body)]">{t("grievance.subtitle")}</p>
-      </Reveal>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="display text-2xl tracking-tight text-[var(--ink)] md:text-3xl">
+          Grievance draft (English)
+        </h1>
+        <Link
+          href="/grievance"
+          className="text-sm font-medium text-[var(--accent-primary)] underline decoration-dotted hover:opacity-80"
+        >
+          Back
+        </Link>
+      </div>
+      <p className="mb-6 text-sm text-[var(--text-faint)]">
+        This is the full submission draft in English, independent of your selected
+        display language.
+      </p>
 
-      <div className="mx-auto mt-8 max-w-2xl">
-        <div className="rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--canvas)] p-6 shadow-[var(--shadow-md)] md:p-8">
-          <Stepper steps={steps} current={step} />
+      <div className="mx-auto max-w-2xl overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-soft)] bg-[var(--surface-elevated)]">
+        <div className="flex items-center gap-2 border-b border-[var(--border-soft)] bg-[var(--state-success)]/8 px-4 py-3">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--state-success)]/15 text-[var(--state-success)]">
+            <IconCheck className="h-3.5 w-3.5" />
+          </span>
+          <p className="text-sm font-semibold text-[var(--ink)]">Grievance draft ready</p>
+        </div>
 
-          <div className="mt-8">
-            {step === 0 && (
-              <div>
-                <h2 className="font-semibold text-[var(--text-primary)]">{t("grievance.categoryTitle")}</h2>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {categories.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setCategoryId(c.id)}
-                      aria-pressed={categoryId === c.id}
-                      className={`group rounded-[var(--radius-md)] border p-4 text-left font-medium transition-all duration-[200ms] ease-[var(--ease-out-cubic)] ${
-                        categoryId === c.id
-                          ? "border-[var(--ink)] bg-[var(--cream-2)] text-[var(--ink)] shadow-sm"
-                          : "border-[var(--border-soft)] bg-[var(--canvas)] text-[var(--text-body)] hover:border-[var(--border-hover)] hover:bg-[var(--cream)]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold">{t(c.labelKey)}</span>
-                        <div
-                          className={`h-4 w-4 rounded-full border flex items-center justify-center ${
-                            categoryId === c.id ? "border-[var(--ink)] bg-[var(--ink)]" : "border-[var(--border-default)]"
-                          }`}
-                        >
-                          {categoryId === c.id && <div className="h-1.5 w-1.5 rounded-full bg-[var(--canvas)]" />}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-8 flex justify-end border-t border-[var(--border-soft)] pt-5">
-                  <Button onClick={() => setStep(1)}>{t("common.next")}</Button>
-                </div>
-              </div>
-            )}
-
-            {step === 1 && (
-              <div className="space-y-5">
-                <div>
-                  <label htmlFor="details" className="block text-sm font-medium text-[var(--ink)]">
-                    {t("grievance.detailsLabel")} <span className="text-[var(--state-error)]">*</span>
-                  </label>
-                  <textarea
-                    id="details"
-                    value={details}
-                    onChange={(e) => {
-                      setDetails(e.target.value);
-                      if (detailsError && e.target.value.trim()) setDetailsError(false);
-                    }}
-                    rows={5}
-                    placeholder={t("grievance.placeholder")}
-                    aria-invalid={detailsError || undefined}
-                    aria-describedby={detailsError ? "details-error" : undefined}
-                    className="mt-1.5 w-full rounded-[var(--radius-cta)] border border-[var(--border-default)] bg-[var(--canvas)] px-3.5 py-2.5 font-answer text-[var(--text-base)] text-[var(--ink)] placeholder:text-[var(--text-faint)] transition-colors focus:border-[var(--accent-primary)] focus:outline-none"
-                  />
-                  {detailsError ? (
-                    <p id="details-error" className="mt-1.5 text-xs font-medium text-[var(--state-error)]">
-                      {t("grievance.detailsRequired")}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-[var(--ink)]">
-                    {t("grievance.nameLabel")}
-                  </label>
-                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="mt-1.5" />
-                </div>
-
-                <div>
-                  <label htmlFor="contact" className="block text-sm font-medium text-[var(--ink)]">
-                    {t("grievance.contactLabel")}
-                  </label>
-                  <Input id="contact" value={contact} onChange={(e) => setContact(e.target.value)} className="mt-1.5" />
-                </div>
-
-                <div className="flex items-center justify-between border-t border-[var(--border-soft)] pt-5">
-                  <Button variant="secondary" onClick={() => setStep(0)}>
-                    {t("common.back")}
-                  </Button>
-                  <Button onClick={goNext}>{t("common.next")}</Button>
-                </div>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="space-y-5">
-                <h2 className="font-semibold text-[var(--text-primary)]">{t("grievance.reviewTitle")}</h2>
-                <Card className="space-y-3 p-5">
-                  <Badge tone="neutral">{t(categories.find((c) => c.id === categoryId)!.labelKey)}</Badge>
-                  <p className="font-answer text-sm leading-relaxed text-[var(--ink)]">{details}</p>
-                  {(name || contact) && (
-                    <div className="border-t border-[var(--border-soft)] pt-2 text-xs text-[var(--text-secondary)]">
-                      {name && <span>{name}</span>}
-                      {name && contact && <span> · </span>}
-                      {contact && <span>{contact}</span>}
-                    </div>
-                  )}
-                </Card>
-                <div className="flex items-center justify-between border-t border-[var(--border-soft)] pt-5">
-                  <Button variant="secondary" onClick={() => setStep(1)}>
-                    {t("common.back")}
-                  </Button>
-                  <Button onClick={submit}>{t("grievance.submitLabel")}</Button>
-                </div>
-              </div>
-            )}
+        <div className="px-4 py-3">
+          <SectionLabel>Title</SectionLabel>
+          <div className="flex items-start gap-2">
+            <IconBuilding className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-faint)]" />
+            <p className="text-sm font-semibold text-[var(--ink)]">{grievance.title}</p>
           </div>
+          <div className="mt-2">
+            <Field label="Reference" value={grievance.reference} />
+            <Field label="Category" value={grievance.category} />
+            <Field label="Sub-category" value={grievance.sub_category} />
+            <Field label="Department" value={grievance.department} />
+            <Field label="Jurisdiction" value={grievance.jurisdiction} />
+          </div>
+
+          {description?.normalized && (
+            <>
+              <Divider />
+              <SectionLabel>Description</SectionLabel>
+              <p className="text-sm leading-relaxed text-[var(--ink)]">
+                {description.normalized}
+              </p>
+            </>
+          )}
+
+          {hasAnyLocation && (
+            <>
+              <Divider />
+              <SectionLabel>
+                <span className="inline-flex items-center gap-1.5">
+                  <IconPin className="h-3.5 w-3.5" />
+                  Location
+                </span>
+              </SectionLabel>
+              <Field label="Ward number" value={location?.ward_number} />
+              <Field label="Locality" value={location?.locality} />
+              <Field label="Area" value={location?.area} />
+              <Field label="City" value={location?.city} />
+              <Field label="State" value={location?.state} />
+            </>
+          )}
+
+          {submission && (submission.portal_name || submission.portal_url) && (
+            <>
+              <Divider />
+              <SectionLabel>Submission</SectionLabel>
+              <Field label="Portal" value={submission.portal_name} />
+              {submission.portal_url && (
+                <div className="flex items-start justify-between gap-3 py-1 text-sm">
+                  <span className="shrink-0 text-[var(--text-faint)]">Link</span>
+                  {/^https?:\/\//.test(submission.portal_url) ? (
+                    <a
+                      href={submission.portal_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-right font-medium text-[var(--accent-primary)] underline decoration-dotted hover:opacity-80"
+                    >
+                      {submission.portal_url}
+                      <IconChevronRight className="h-3 w-3 shrink-0" />
+                    </a>
+                  ) : (
+                    <span className="max-w-[70%] text-right text-[var(--ink)]">
+                      {submission.portal_url}
+                    </span>
+                  )}
+                </div>
+              )}
+              <Field label="Department" value={submission.department} />
+              <Field label="Level" value={submission.level} />
+
+              {submission.steps && submission.steps.length > 0 && (
+                <>
+                  <Divider />
+                  <SectionLabel>Steps to submit</SectionLabel>
+                  <ol className="list-decimal space-y-1.5 pl-5 text-sm text-[var(--ink)]">
+                    {submission.steps.map((step, i) => (
+                      <li key={i} className="leading-relaxed">{step}</li>
+                    ))}
+                  </ol>
+                </>
+              )}
+
+              {submission.required_documents && submission.required_documents.length > 0 && (
+                <>
+                  <Divider />
+                  <SectionLabel>
+                    <span className="inline-flex items-center gap-1.5">
+                      <IconDoc className="h-3.5 w-3.5" />
+                      Required documents
+                    </span>
+                  </SectionLabel>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--ink)]">
+                    {submission.required_documents.map((doc, i) => (
+                      <li key={i} className="leading-relaxed">{doc}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
+              {submission.estimated_timeline && (
+                <>
+                  <Divider />
+                  <SectionLabel>
+                    <span className="inline-flex items-center gap-1.5">
+                      <IconClock className="h-3.5 w-3.5" />
+                      Estimated timeline
+                    </span>
+                  </SectionLabel>
+                  <p className="text-sm font-medium text-[var(--ink)]">
+                    {submission.estimated_timeline}
+                  </p>
+                </>
+              )}
+
+              {submission.disclaimer && (
+                <>
+                  <Divider />
+                  <div className="flex items-start gap-2 rounded-[var(--radius-md)] bg-[var(--state-warning)]/10 px-3 py-2 text-xs text-[var(--state-warning)]">
+                    <IconAlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <p>
+                      <span className="font-semibold">Disclaimer: </span>
+                      {submission.disclaimer}
+                    </p>
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

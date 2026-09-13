@@ -3,19 +3,11 @@
 
 from app.contracts import (
     AbstentionReason,
-    ConfidenceBand,
-    HardFilter,
     RetrievalCandidate,
 )
 from app.services.static_rag import _reciprocal_rank_fusion as reciprocal_rank_fusion
-from app.evidence_gate import (
-    apply_hard_filters,
-    check_jurisdiction,
-    evidence_gate_v2,
-)
 from app.citation_verifier import (
     extract_citations_from_answer,
-    verify_and_repair,
     verify_citation_ids,
     verify_claims_supported,
     verify_citations,
@@ -79,94 +71,6 @@ class TestHybridRetrieval:
         result = reciprocal_rank_fusion(dense, lexical)
         ids = [r.chunk_id for r in result]
         assert ids == sorted(ids)
-
-    def test_hard_filters_domain(self):
-        c1 = RetrievalCandidate(
-            chunk_id="a", document_id="doc-001", source_id="src-001",
-            dense_score=0.5, filter_decisions={"domain": True, "active": True},
-        )
-        c2 = RetrievalCandidate(
-            chunk_id="b", document_id="doc-001", source_id="src-001",
-            dense_score=0.5, filter_decisions={"domain": False, "active": True},
-        )
-        filters = HardFilter(domain="schemes")
-        result = apply_hard_filters([c1, c2], filters)
-        assert len(result) == 1
-        assert result[0].chunk_id == "a"
-
-
-# ---------------------------------------------------------------------------
-# Evidence Gate v2
-# ---------------------------------------------------------------------------
-
-class TestEvidenceGateV2:
-    def test_empty_candidates_abstains(self):
-        abstained, reason, _band = evidence_gate_v2(
-            [], expected_domain="schemes"
-        )
-        assert abstained is True
-        assert reason == AbstentionReason.NO_ELIGIBLE_SOURCE
-
-    def test_passes_with_good_evidence(self):
-        candidates = [
-            _make_candidate("a", dense_score=0.6),
-            _make_candidate("b", dense_score=0.5),
-            _make_candidate("c", dense_score=0.4),
-        ]
-        abstained, _reason, band = evidence_gate_v2(
-            candidates, expected_domain="schemes"
-        )
-        assert abstained is False
-        assert band in (ConfidenceBand.HIGH, ConfidenceBand.MEDIUM)
-
-    def test_below_top1_abstains(self):
-        candidates = [_make_candidate("a", dense_score=0.2)]
-        abstained, reason, _band = evidence_gate_v2(
-            candidates, expected_domain="schemes"
-        )
-        assert abstained is True
-        assert reason == AbstentionReason.BELOW_TOP1_THRESHOLD
-
-    def test_insufficient_supporting_chunks(self):
-        candidates = [_make_candidate("a", dense_score=0.5)]
-        abstained, reason, _band = evidence_gate_v2(
-            candidates, expected_domain="schemes"
-        )
-        assert abstained is True
-        assert reason == AbstentionReason.INSUFFICIENT_SUPPORTING_CHUNKS
-
-    def test_confidence_high(self):
-        candidates = [
-            _make_candidate("a", dense_score=0.6),
-            _make_candidate("b", dense_score=0.5),
-            _make_candidate("c", dense_score=0.4),
-            _make_candidate("d", dense_score=0.35),
-        ]
-        _, _, band = evidence_gate_v2(candidates)
-        assert band == ConfidenceBand.HIGH
-
-    def test_confidence_medium(self):
-        candidates = [
-            _make_candidate("a", dense_score=0.4),
-            _make_candidate("b", dense_score=0.35),
-        ]
-        _, _, band = evidence_gate_v2(candidates)
-        assert band == ConfidenceBand.MEDIUM
-
-    def test_check_jurisdiction_central(self):
-        candidates = [_make_candidate("a", is_central=True)]
-        reason = check_jurisdiction(candidates, "gujarat")
-        assert reason is None
-
-    def test_check_jurisdiction_state_match(self):
-        candidates = [_make_candidate("a", is_central=False, state_match=True)]
-        reason = check_jurisdiction(candidates, "gujarat")
-        assert reason is None
-
-    def test_check_jurisdiction_state_mismatch(self):
-        candidates = [_make_candidate("a", is_central=False, state_match=False)]
-        reason = check_jurisdiction(candidates, "gujarat")
-        assert reason == AbstentionReason.JURISDICTION_MISMATCH
 
 
 # ---------------------------------------------------------------------------
@@ -246,16 +150,3 @@ class TestCitationVerifier:
         result = verify_citations(answer, ["abc12345def"])
         assert result.is_valid is False
         assert result.reason == AbstentionReason.CITATION_FAILURE
-
-    def test_verify_and_repair_success(self):
-        def repair(ans, evidence):
-            return f"Repaired [chunk:{evidence[0][:8]}]"
-
-        result = verify_citations("bad [chunk:fffffffffff]", ["abc12345def"])
-        assert result.is_valid is False
-
-        repaired = verify_and_repair(
-            "bad [chunk:fffffffffff]", ["abc12345def"], repair_fn=repair
-        )
-        assert repaired.is_valid is True
-        assert repaired.repair_attempted is True

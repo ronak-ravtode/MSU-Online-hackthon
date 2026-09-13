@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Locale } from "./i18n";
+import { LOCALES, type Locale } from "./i18n";
 import { translate } from "./dictionaries";
 
 type I18nContextValue = {
@@ -18,7 +18,12 @@ type I18nContextValue = {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-const VALID_LOCALES: Locale[] = ["en", "hi", "gu"];
+// Derived from the canonical locale list so every supported language
+// (en, hi, gu, mr, bn, ta) is selectable — previously hardcoded to
+// ["en", "hi", "gu"], which silently no-opped the language switcher
+// for Marathi/Bengali/Tamil even though full dictionaries and backend
+// support already existed for them.
+const VALID_LOCALES: Locale[] = [...LOCALES];
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>("en");

@@ -1,4 +1,4 @@
-"""Sarvam AI translation provider — Mayura v2 translation model.
+"""Sarvam AI translation provider — Mayura v1 translation model.
 
 Sarvam supports translation between Indian languages and English.
 This is used as primary translator for Indian languages, with Azure as fallback.
@@ -21,6 +21,9 @@ _SARVAM_BASE = "https://api.sarvam.ai"
 
 # Sarvam API character limit (approximate, with safety margin)
 _SARVAM_CHAR_LIMIT = 900
+
+# Translation model version — must match the active Sarvam API model
+_TRANSLATION_MODEL_VERSION = "mayura:v1"
 
 # Sarvam language code mapping
 _SARVAM_LANG_MAP = {
@@ -63,7 +66,7 @@ def _raw_translate(api_key: str, text: str, source_lang: str, target_lang: str) 
         "input": text,
         "source_language_code": _to_sarvam_lang(source_lang),
         "target_language_code": _to_sarvam_lang(target_lang),
-        "model": "mayura:v1",
+        "model": _TRANSLATION_MODEL_VERSION,
         "numerals_format": "native",
         "mode": "modern-colloquial",  # Use modern-colloquial for user-facing content
     }
@@ -123,7 +126,7 @@ def _split_text_for_translation(text: str, max_chars: int = _SARVAM_CHAR_LIMIT) 
 
 
 class SarvamTranslator:
-    """Sarvam Mayura v2 translator for Indian languages with key rotation."""
+    """Sarvam Mayura v1 translator for Indian languages with key rotation."""
 
     def __init__(self, settings=None) -> None:
         self.settings = settings or get_settings()
@@ -154,7 +157,7 @@ class SarvamTranslator:
         if source == target or (source == "en" and target == "en"):
             return text
 
-        cache_key = (text, source, target)
+        cache_key = (_TRANSLATION_MODEL_VERSION, text, source, target)
         if cache_key in _translate_cache:
             logger.debug("Sarvam translate cache hit")
             return _translate_cache[cache_key]
@@ -169,19 +172,16 @@ class SarvamTranslator:
                 # Short text, translate directly
                 result = self._translate_chunk(text, source, target)
             else:
-                # Long text, translate each chunk and rejoin
+                # Long text, translate each chunk and rejoin.
+                # If ANY chunk fails, the entire translation fails so
+                # the caller's Azure fallback can handle the full text.
                 logger.info("Sarvam: splitting into %d chunks for translation", len(chunks))
                 translated_chunks = []
                 for i, chunk in enumerate(chunks):
-                    try:
-                        translated_chunk = self._translate_chunk(chunk, source, target)
-                        translated_chunks.append(translated_chunk)
-                        logger.debug("Sarvam chunk %d/%d translated: len %d -> %d",
-                                   i + 1, len(chunks), len(chunk), len(translated_chunk))
-                    except Exception as e:
-                        logger.warning("Sarvam chunk %d/%d failed: %s", i + 1, len(chunks), e)
-                        # Use original chunk on failure
-                        translated_chunks.append(chunk)
+                    translated_chunk = self._translate_chunk(chunk, source, target)
+                    translated_chunks.append(translated_chunk)
+                    logger.debug("Sarvam chunk %d/%d translated: len %d -> %d",
+                               i + 1, len(chunks), len(chunk), len(translated_chunk))
                 result = " ".join(translated_chunks)
 
             # Validate translation actually changed the text
@@ -193,4 +193,4 @@ class SarvamTranslator:
             return result
         except Exception as e:
             logger.warning("Sarvam translation failed with all keys: %s", e)
-            return text
+            raise

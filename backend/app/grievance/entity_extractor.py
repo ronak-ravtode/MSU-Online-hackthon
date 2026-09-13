@@ -110,15 +110,15 @@ class GrievanceEntityExtractor:
             "optional": ["land_owner_name", "award_date", "bank_account"],
         },
         GrievanceSubCategory.GARBAGE: {
-            "required": ["ward_number", "locality", "issue_description"],
+            "required": ["ward_number", "city", "locality", "issue_description"],
             "optional": ["municipality", "zone", "landmark", "photos"],
         },
         GrievanceSubCategory.DRAINAGE: {
-            "required": ["ward_number", "locality", "issue_description"],
+            "required": ["ward_number", "city", "locality", "issue_description"],
             "optional": ["municipality", "zone", "landmark", "duration"],
         },
         GrievanceSubCategory.STREET_LIGHT: {
-            "required": ["ward_number", "locality", "pole_number_or_location"],
+            "required": ["ward_number", "city", "locality", "pole_number_or_location"],
             "optional": ["municipality", "zone", "duration"],
         },
         GrievanceSubCategory.BUILDING_PERMIT: {
@@ -130,7 +130,7 @@ class GrievanceEntityExtractor:
             "optional": ["owner_name", "property_address", "amount_paid", "payment_date"],
         },
         GrievanceSubCategory.ROAD_DAMAGE: {
-            "required": ["ward_number", "locality", "issue_description"],
+            "required": ["ward_number", "city", "locality", "issue_description"],
             "optional": ["municipality", "zone", "landmark", "photos"],
         },
         GrievanceSubCategory.BILLING_DISPUTE: {
@@ -325,6 +325,19 @@ class GrievanceEntityExtractor:
         "known", "unknown", "not sure", "not known",
     }
 
+    # Words that signal a new location field starts here; extraction
+    # must never swallow them into the value of a prior keyword.
+    _LOCATION_BOUNDARY_WORDS = frozenset({
+        "city", "town", "state", "district", "zone", "ward",
+        "pincode", "locality", "landmark", "block", "village",
+        "tehsil", "taluk", "colony", "sector",
+        # Conjunctions / clause boundaries — extraction must stop before
+        # these so "area name Modi Garden and city Bharuch" yields
+        # "Modi Garden" not "Modi Garden and city Bharuch".
+        "and", "or", "plus", "with",
+        "અને",  # Gujarati "and"
+    })
+
     def _extract_keyword_value(self, keyword: str, text: str) -> str | None:
         """Return the value following ``keyword`` in ``text`` if -- and
         only if -- the text actually gives one. See the comment above
@@ -339,6 +352,28 @@ class GrievanceEntityExtractor:
 
         if not value:
             return None
+
+        # Stop at location-boundary words so "area name Modi Garden
+        # and city Bharuch" yields "name Modi Garden and" (or after
+        # filler-word removal, "Modi Garden and") rather than
+        # swallowing the city portion.
+        words = value.split()
+        truncated: list[str] = []
+        for w in words:
+            if w.lower() in self._LOCATION_BOUNDARY_WORDS:
+                break
+            truncated.append(w)
+        if truncated:
+            value = " ".join(truncated)
+
+        # Strip leading filler words (e.g. "name" from "name Modi Garden")
+        while value:
+            first = value.split()[0].lower()
+            if first in self._GENERIC_FILLER_WORDS:
+                value = value[len(value.split()[0]):].strip()
+            else:
+                break
+
         if value.lower() in self._GENERIC_FILLER_WORDS:
             return None
         return value

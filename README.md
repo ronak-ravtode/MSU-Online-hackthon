@@ -20,7 +20,8 @@ financial literacy, and grievance redressal.
 - Applies jurisdiction filtering (central + selected state — currently Gujarat)
 - **Hybrid retrieval**: dense vector search (pgvector) + lexical search (RRF fusion)
 - Abstains when evidence is insufficient — never guesses
-- Prototype grievance workflow with follow-up questions and status lookup
+- Prototype grievance workflow with follow-up questions, status lookup, and
+  full multilingual localization (system text translated; user values preserved)
   (`is_official_submission: false` — no real government integration)
 - Voice input/output via Sarvam AI (Indic language support)
 - Responsive PWA (desktop + mobile)

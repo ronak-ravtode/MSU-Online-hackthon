@@ -1,5 +1,3 @@
-from collections.abc import Generator
-
 import httpx
 
 from app.providers.base import LLMProvider
@@ -36,18 +34,5 @@ def grounded_answer(
             return provider.generate(system, user)
         except Exception as exc:
             logger.warning(f"{name} failed, falling back: {exc!r}")
-            errors.append(f"{name}: {exc!r}")
-    raise AllProvidersFailedError("; ".join(errors))
-
-
-def grounded_answer_stream(primary: LLMProvider, fallback: LLMProvider,
-                           system: str, user: str) -> Generator[str, None, None]:
-    """Yield tokens from primary; fall back to secondary on failure."""
-    errors: list[str] = []
-    for name, provider in (("groq", primary), ("gemini", fallback)):
-        try:
-            yield from provider.generate_stream(system, user)
-            return
-        except Exception as exc:
             errors.append(f"{name}: {exc!r}")
     raise AllProvidersFailedError("; ".join(errors))
