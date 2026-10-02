@@ -8,16 +8,16 @@
 
 ## Canonical Domain IDs
 
-| Canonical ID | Description | Database Documents |
-|--------------|-------------|-------------------|
-| `pacs_governance` | PACS byelaws, governance, membership, cooperative society registration | `pacs_model_bylaws_2023` (337 chunks), `model_hr_policy_v21` (601 chunks), `moc_young_professionals` (213 chunks), `cooperative_sugar_mills_csm_scheme` (43 chunks) |
-| `pacs_computerization` | PACS computerization scheme, digitization guidelines | `pacs_computerization_guidelines` (192 chunks), `pacs_computerization_corrigendum_2023_06_12` (22 chunks) |
-| `pmfby` | PMFBY crop insurance, claims, premiums, eligibility | `pmfby_operational_guidelines` (1266 chunks) |
-| `financial_inclusion` | RBI, Jan Dhan, financial literacy, deposit insurance, RuPay | `nsfi_2025_30` (371 chunks), `rbi_fame_financial_awareness` (579 chunks), `rbi_beaware_financial_fraud` (429 chunks), `irdai_introduction_to_insurance` (725 chunks) |
-| `schemes` | Ministry of Cooperation schemes (no DB documents yet) | — |
-| `agriculture` | Agriculture practices, MSP, mandi, fertilizer (no DB documents yet) | — |
-| `grievance` | Complaint filing, grievance redressal (no DB documents yet) | — |
-| `out_of_scope` | Query does not match any domain | — |
+| Canonical ID | Description | Docs | Chunks | Source documents |
+|--------------|-------------|------|--------|-------------------|
+| `pacs_governance` | PACS byelaws, governance, membership, cooperative society registration | 8 | 2076 | Model Byelaws, HR Policy, MoC YPs, CSM Scheme, CRCS Order, Cooperative Member Rights, Gujarat Act, HR Policy Transformation |
+| `pacs_computerization` | PACS computerization scheme, digitization guidelines | 3 | 316 | Revised Scheme guidelines, Corrigendum, GeM Hiring |
+| `pmfby` | PMFBY crop insurance, claims, premiums, eligibility | 16 | 8153 | PMFBY Operational Guidelines, Revamped Guidelines, WINDS Manual, WBCIS, UPIS, YESTECH, NAIS, RWBCIS, AWS, SOP |
+| `financial_inclusion` | RBI, Jan Dhan, financial literacy, deposit insurance, RuPay | 9 | 3816 | NSFI 2025-30, RBI FAME (2 editions), RBI BE(A)WARE (2 editions), RBI Financial Education, IRDAI Insurance, NABARD Literacy |
+| `schemes` | Ministry of Cooperation schemes (ads, YP, internships) | 14 | 641 | Lok Sabha Calendar, YP/Consultant ads, Faculty ads, Internship ToR, Cooperative Ombudsman, Election Authority, CSM Grant |
+| `agriculture` | Agriculture practices, MSP, mandi, fertilizer (no DB documents yet) | 0 | 0 | — |
+| `grievance` | Complaint filing, grievance redressal (no DB documents yet) | 0 | 0 | — |
+| `out_of_scope` | Query does not match any domain | 0 | 0 | — |
 
 ---
 

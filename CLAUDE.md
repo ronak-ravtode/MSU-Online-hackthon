@@ -57,18 +57,22 @@ POST /grievances/finalize         ← finalize grievance (returns submission gui
 POST /grievances/fields           ← get grievance field schema for a stage
 POST /grievances/clarify          ← answer clarification question
 POST /grievances/answer           ← answer a specific field
+POST /translate                   ← translate text between languages
+POST /webhooks/clerk              ← Clerk webhook for user events
 GET  /conversations/{session_id}
+GET  /conversations/{id}/pin      ← pin a conversation
 GET  /evidence/{...}
+GET  /documents/pdf/{filename}    ← safe PDF serving
 GET  /health
 GET  /health/providers
 ```
 
 Chat request: `{ question, session_id, language, ui_language_explicit?, state?, as_of_date?, history? }`  
-Language values: `"en" | "hi" | "gu" | "mr" | "bn" | "ta"`
+Language values: `"en" | "hi" | "gu" | "mr" | "bn" | "ta" | "te" | "kn" | "pa" | "or" | "ml"`
 
 Chat response: `{ answer, language, domain, intent, entities, confidence, confidence_level, citations, abstained, speech_text, speech_segments, follow_up_question, mode, conversation_id }`
 
-SSE events: `thinking | token | metadata | done`
+SSE events: `thinking | step | token | metadata | done`
 
 ---
 
@@ -96,9 +100,12 @@ SSE events: `thinking | token | metadata | done`
 - ✅ StaticRAGService — Supabase pgvector hybrid retrieval (dense + lexical RRF)
 - ✅ WebRAGService — 10-step pipeline (Tavily/Firecrawl → BM25 → Gemini rerank → verify)
 - ✅ Evidence gate, citation verifier, abstention
-- ✅ 6-language frontend (EN, HI, GU, MR, BN, TA) with chat, grievance, schemes, library pages
-- ✅ Document ingestion: 11 docs, 4778 chunks (pacs_governance, pacs_computerization, pmfby, financial_inclusion)
+- ✅ 11-language frontend (EN, HI, GU, MR, BN, TA, TE, KN, PA, OR, ML) with chat, grievance, schemes, library pages
+- ✅ Document ingestion: 50 docs, 15002 chunks (pacs_governance, pacs_computerization, pmfby, financial_inclusion, schemes)
 - ✅ Grievance localization — `FIELD_PROMPTS` (30 prompts), `SUBMISSION_STEPS`, `FOLLOWUP_PREFIX`, `WORKFLOW_PREFIX` maps in `translations.py`; `translate_field_prompt()` for field questions; frontend field card labels via `dictionaries.ts` i18n lookup
+- ✅ Clerk authentication (optional, configurable)
+- ✅ Thinking process animation — step events with localized labels, auto-collapse
+- ✅ Answer grounding — regex claim extraction, enumeration detection, optional LLM verification
 
 ---
 

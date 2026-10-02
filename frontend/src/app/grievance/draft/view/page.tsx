@@ -33,7 +33,7 @@ export default function EnglishDraftViewPage() {
 
   if (!draft) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-12">
+      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
         <h1 className="text-xl font-bold">English Grievance Draft</h1>
         <p className="mt-4 text-sm text-[var(--text-faint)]">
           No English draft available. This page is only shown when the grievance
@@ -47,7 +47,7 @@ export default function EnglishDraftViewPage() {
   const hasLocation = location && (location.ward_number || location.locality || location.area || location.city || location.state);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12">
+    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
       <h1 className="text-xl font-bold">English Grievance Draft</h1>
       <p className="mt-1 text-xs text-[var(--text-faint)]">
         Full English-language version of your grievance for submission.

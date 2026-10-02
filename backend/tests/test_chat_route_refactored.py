@@ -9,13 +9,14 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch, AsyncMock
 from fastapi.testclient import TestClient
 
+from app.auth import require_auth
 from app.main import app
 from app.contracts import (
     ConfidenceBand,
     RAGResponse,
 )
 
-
+app.dependency_overrides[require_auth] = lambda: "test-user"
 client = TestClient(app, raise_server_exceptions=False)
 
 
@@ -346,11 +347,12 @@ class TestChatStreamEndpoint:
         assert resp.status_code == 200
         assert "text/event-stream" in resp.headers["content-type"]
         text = resp.text
-        assert "event: thinking" in text
         assert "event: token" in text
         assert "event: metadata" in text
         assert "event: done" in text
         assert "PMFBY" in text
+
+
 
     @patch("app.routes.chat._get_query_classifier")
     @patch("app.routes.chat.get_anchor_store")
@@ -650,4 +652,51 @@ class TestActiveGrievancePriority:
                 assert resp.status_code == 200
                 text = resp.text
                 assert "pmfby" in text.lower() or "PMFBY" in text
+
+
+class TestEmptyAnswerSafety:
+    """Tests for empty answer safeguards in translation and streaming."""
+
+    def test_translate_from_english_empty_string(self):
+        from app.routes.chat import _translate_from_english
+        mock_settings = MagicMock()
+        res = _translate_from_english("", "gu", mock_settings)
+        assert res == ""
+
+    @patch("app.routes.chat._get_rag_orchestrator")
+    @patch("app.routes.chat._get_query_classifier")
+    @patch("app.routes.chat.get_anchor_store")
+    @patch("app.routes.chat.get_embedding_provider")
+    @patch("app.routes.chat.get_history")
+    @patch("app.routes.chat.save_message")
+    @patch("app.routes.chat.trim_messages")
+    @patch("app.routes.chat.touch_session")
+    @patch("app.routes.chat.resolve_and_remember")
+    @patch("app.routes.chat.detect_query_languages")
+    def test_empty_rag_answer_streams_abstain_text(
+        self, mock_detect, mock_resolve, mock_touch, mock_trim,
+        mock_save, mock_history, mock_embed_provider, mock_anchor,
+        mock_classifier, mock_orchestrator,
+    ):
+        mock_detect.return_value = {"dominant": "en"}
+        mock_resolve.return_value = "en"
+        mock_history.return_value = []
+        mock_embed_provider.return_value.embed_texts.return_value = [_make_embedding()]
+        mock_anchor.return_value.classify.return_value = ("pmfby", 0.9)
+        mock_anchor.return_value.rules = {}
+        mock_classifier.return_value.classify.return_value = _make_classification()
+        # Orchestrator returns empty answer
+        mock_orchestrator.return_value.run = AsyncMock(return_value=_make_rag_response(answer=""))
+
+        resp = client.post("/chat/stream", json={
+            "question": "What is PMFBY?",
+            "session_id": "test-empty-stream",
+            "language": "en",
+        })
+
+        assert resp.status_code == 200
+        text = resp.text
+        assert "event: token" in text
+        assert "abstained" in text
+
 

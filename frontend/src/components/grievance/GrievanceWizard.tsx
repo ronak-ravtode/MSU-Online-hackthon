@@ -170,6 +170,12 @@ export function GrievanceWizard() {
 
   // ---- Phase: intake -----------------------------------------------
   if (phase === "intake") {
+    const sampleQuestions = [
+      t("grievanceWizard.sample1"),
+      t("grievanceWizard.sample2"),
+      t("grievanceWizard.sample3"),
+    ];
+
     return (
       <Card className="mx-auto max-w-2xl p-6 md:p-8">
         <h2 className="font-semibold text-[var(--text-primary)]">{t("grievanceWizard.startPrompt")}</h2>
@@ -181,7 +187,31 @@ export function GrievanceWizard() {
           onChange={(e) => setComplaintText(e.target.value)}
         />
         {error && <p className="mt-2 text-sm text-[var(--state-error)]">{error}</p>}
-        <div className="mt-4 flex justify-end">
+
+        {/* Sample Questions */}
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-medium text-[var(--text-faint)]">{t("grievanceWizard.tryExample")}:</p>
+          <div className="flex flex-wrap gap-2">
+            {sampleQuestions.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => { setComplaintText(q); submitComplaint(q, true); }}
+                className="rounded-full border border-[var(--border-soft)] bg-[var(--cream)] px-3 py-1.5 text-xs text-[var(--ink)] transition-colors hover:border-[var(--accent-primary)] hover:bg-[var(--surface-elevated)]"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end gap-3">
+          <Button
+            variant="secondary"
+            onClick={() => { /* suggest feature placeholder */ }}
+          >
+            {t("grievanceWizard.suggestFeature")}
+          </Button>
           <Button
             variant="primary"
             disabled={loading || !complaintText.trim()}
@@ -298,7 +328,17 @@ export function GrievanceWizard() {
               className="w-full rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-base)] p-3 text-sm text-[var(--ink)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]"
               value={answers[activeField.field] ?? ""}
               onChange={(e) => saveActiveAnswer(e.target.value)}
+              placeholder={activeField.suggestion || ""}
             />
+            {activeField.suggestion && (
+              <button
+                type="button"
+                onClick={() => saveActiveAnswer(activeField.suggestion || "")}
+                className="mt-2 text-xs font-medium text-[var(--accent-primary)] hover:underline"
+              >
+                {t("grievanceWizard.suggestFeature")}: {activeField.suggestion}
+              </button>
+            )}
           </div>
         )}
 

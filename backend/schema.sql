@@ -130,3 +130,31 @@ language sql
 as $$
   delete from sessions where expires_at < now();
 $$;
+
+-- 8. Users table (Clerk sync)
+create table if not exists users (
+  id            text primary key,
+  email         text,
+  full_name     text,
+  preferred_language text default 'en',
+  state         text,
+  created_at    timestamptz default now(),
+  updated_at    timestamptz default now()
+);
+
+-- Auto-update updated_at on users
+create or replace function update_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists users_updated_at on users;
+create trigger users_updated_at
+  before update on users
+  for each row
+  execute function update_updated_at();

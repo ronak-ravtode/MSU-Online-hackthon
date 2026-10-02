@@ -121,9 +121,9 @@ Each entry: what changed, why, what it replaced, when.
 ---
 
 ### Bounded generation output
-**Date:** 2026-09-05
-**What:** `GENERATION_MAX_TOKENS = 1800` for normal generation, `REPAIR_MAX_TOKENS = 2200` for citation repair. These values are sent to Groq as `max_tokens` in the API request.
-**Why:** Intentional engineering control to bound generation output size and latency/cost. Value transplanted from eGovAssistant proven defaults.
+**Date:** 2026-09-05 (updated 2026-09-18)
+**What:** `GENERATION_MAX_TOKENS = 4096` for generation. This value is sent to Groq as `max_tokens` in the API request.
+**Why:** Intentional engineering control to bound generation output size and latency/cost.
 
 ---
 
@@ -139,3 +139,38 @@ Each entry: what changed, why, what it replaced, when.
 **Date:** 2026-09-10
 **What:** `sessionId` in `ChatWindow.tsx` changed from `useState` to `useRef` + `resetSessionId()`. Reset on new-chat, load-conversation, delete-conversation, clear-all-history, and URL query param handlers.
 **Why:** `useState` created `sessionId` once and never reset it, causing grievance state to leak across "New Chat" actions. Backend fresh-state defense in `GrievanceWorkflow.process_message()` complements this by detecting new complaints after completed grievances.
+
+---
+
+### Language expansion: 6 → 11 languages
+**Date:** 2026-09-17
+**What:** Added Telugu (te), Kannada (kn), Punjabi (pa), Odia (or), Malayalam (ml) — wired existing dictionaries into `LOCALES`, `LanguageSwitcher`, and `dict` export. Backend `ChatRequest.language` Literal expanded to 11 langs. `language_config.json` updated with scripts/stopwords/supported_languages for all 11. `_SCRIPT_TO_LANG` (9 scripts), `_EXPLICIT_LANG_NAMES` (11 langs), `_EXPLICIT_RE` regex, `normalize_language()` detection, `detect_query_languages()` presence+dominant detection, `english_retrieval_query()` all updated. `_THINKING_MESSAGES` and `_STEP_LABELS` added for te/kn/pa/or/ml.
+**Why:** Sarvam AI supports 11 Indic languages. Expanding coverage improves accessibility for Telugu, Kannada, Punjabi, Odia, and Malayalam speakers.
+
+---
+
+### Model routing: V1/V2/V3 pipeline separation
+**Date:** 2026-09-17
+**What:** V1 (static) runs only StaticRAGService, V2 (web) runs only WebRAGService, V3 (rag_web) runs both pipelines in parallel. `mode` from `ChatRequest` now passed to `RAGOrchestrator.run()` as `model_override`.
+**Why:** Previous routing incorrectly passed pipeline mode as a Groq model name, causing 404s and unnecessary fallbacks. Explicit mode separation makes pipeline selection deterministic.
+
+---
+
+### Brand consistency: JanSahay (not JanSayah)
+**Date:** 2026-09-17
+**What:** Unified brand name to "JanSahay" across all files — fixed "JanSayah" typo in dictionaries.ts and other references.
+**Why:** Consistent branding across frontend, backend, and documentation.
+
+---
+
+### Clerk authentication (optional)
+**Date:** 2026-09-17
+**What:** Added Clerk authentication as an optional, configurable layer. `auth.py` provides `require_auth` dependency. `webhooks.py` handles Clerk user events. Config keys: `clerk_secret_key`, `clerk_webhook_secret`, `clerk_issuer`.
+**Why:** Provides user identity for conversation persistence and personalization without requiring complex auth infrastructure.
+
+---
+
+### Thinking process animation (step events)
+**Date:** 2026-09-15
+**What:** `on_step` callback in `RAGOrchestrator.run()` emits structured step events at each pipeline stage. `_STEP_LABELS` localized labels (11 languages × 6 step IDs) + `_make_step_emitter()` in `chat.py`. New `StepEvent` type + `"step"` SSE event in `api.ts`. `ThinkingProcess` component replaces `ThinkingBubble` — step list with spinner/checkmark, auto-collapse on token arrival, dropdown chevron to re-expand.
+**Why:** Users need visibility into multi-step RAG pipeline progress. Step events provide real-time feedback during retrieval, evidence merging, and generation.

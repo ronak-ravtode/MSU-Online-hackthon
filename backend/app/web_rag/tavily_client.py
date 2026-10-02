@@ -16,6 +16,7 @@ Responsibilities:
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, List, Dict, Optional
 
 import httpx
@@ -25,7 +26,7 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
-DEFAULT_TIMEOUT_SECONDS = 30
+DEFAULT_TIMEOUT_SECONDS = 5
 DEFAULT_MAX_RESULTS = 20
 DEFAULT_CHUNKS_PER_SOURCE = 3
 MAX_API_KEYS = 2
@@ -381,44 +382,54 @@ class TavilyClient:
         }
 
         errors = []
-        key_count = len(self.api_keys)
 
-        for attempt in range(key_count):
-            key_index = (self.active_key_index + attempt) % key_count
+        def request_with_key(key_index: int) -> tuple[int, httpx.Response]:
             api_key = self.api_keys[key_index]
-
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
 
-            try:
-                with httpx.Client(timeout=self.timeout) as client:
-                    response = client.post(
-                        TAVILY_SEARCH_URL,
-                        json=payload,
-                        headers=headers,
-                    )
-            except httpx.RequestError as error:
-                errors.append(f"key_{key_index + 1}: network error: {error}")
-                continue
+            with httpx.Client(timeout=self.timeout) as client:
+                return key_index, client.post(
+                    TAVILY_SEARCH_URL,
+                    json=payload,
+                    headers=headers,
+                )
 
-            if response.status_code >= 400:
-                body = response.text[:1000]
-                errors.append(f"key_{key_index + 1}: HTTP {response.status_code}: {body}")
-                continue
+        # Race configured keys so a slow or stale key cannot delay a healthy
+        # replacement key and consume the entire WebRAG budget.
+        executor = ThreadPoolExecutor(max_workers=len(self.api_keys))
+        pending = [
+            executor.submit(request_with_key, key_index)
+            for key_index in range(len(self.api_keys))
+        ]
+        try:
+            for future in as_completed(pending):
+                try:
+                    key_index, response = future.result()
+                except httpx.RequestError as error:
+                    errors.append(f"network error: {error}")
+                    continue
 
-            try:
-                data = response.json()
-            except ValueError:
-                errors.append(f"key_{key_index + 1}: non-JSON response")
-                continue
+                if response.status_code >= 400:
+                    body = response.text[:1000]
+                    errors.append(f"key_{key_index + 1}: HTTP {response.status_code}: {body}")
+                    continue
 
-            if not isinstance(data, dict):
-                errors.append(f"key_{key_index + 1}: unexpected response format")
-                continue
+                try:
+                    data = response.json()
+                except ValueError:
+                    errors.append(f"key_{key_index + 1}: non-JSON response")
+                    continue
 
-            self.active_key_index = key_index
-            return self._post_filter_results(data, domain)
+                if not isinstance(data, dict):
+                    errors.append(f"key_{key_index + 1}: unexpected response format")
+                    continue
+
+                self.active_key_index = key_index
+                return self._post_filter_results(data, domain)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
         raise TavilyAPIError("All configured Tavily API keys failed. " + " | ".join(errors))

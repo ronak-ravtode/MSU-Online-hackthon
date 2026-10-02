@@ -424,3 +424,75 @@ class FilterOutcome(str, Enum):
     FILTER = "filter"
     REGENERATE = "regenerate"
     ABSTAIN = "abstain"
+
+
+# ---------------------------------------------------------------------------
+# Scenario Reasoning Contracts
+# ---------------------------------------------------------------------------
+
+class QueryComplexity(str, Enum):
+    """Structural classification of query complexity."""
+    SIMPLE = "simple"
+    PROCEDURE = "procedure"
+    ELIGIBILITY = "eligibility"
+    SCENARIO = "scenario"
+    MULTI_CONDITION = "multi_condition"
+    MULTI_HOP = "multi_hop"
+    COMPARISON = "comparison"
+    AMBIGUOUS = "ambiguous"
+
+
+class RequirementStatus(str, Enum):
+    """Whether a requirement has supporting evidence."""
+    SUPPORTED = "supported"
+    PARTIAL = "partial"
+    UNSUPPORTED = "unsupported"
+    MISSING_USER_FACT = "missing_user_fact"
+
+
+class EvidenceRequirement(BaseModel):
+    """A single requirement extracted from a complex query."""
+    requirement_id: str
+    description: str
+    search_query: str  # English query for retrieval
+    status: RequirementStatus = RequirementStatus.UNSUPPORTED
+    evidence_ids: list[str] = Field(default_factory=list)
+    source: str = "user_stated"  # "user_stated" | "inferred" | "derived"
+
+
+class DerivedConclusion(BaseModel):
+    """A conclusion derived from multiple evidence items."""
+    conclusion: str
+    supporting_evidence_ids: list[str]
+    requires_conditions: list[str]  # conditions that must hold
+
+
+class ScenarioPlan(BaseModel):
+    """Structured plan for a complex query."""
+    complexity: QueryComplexity
+    user_facts: list[str]
+    requirements: list[EvidenceRequirement]
+    missing_user_facts: list[str] = Field(default_factory=list)
+    original_query: str = ""
+
+
+class EvidenceMapEntry(BaseModel):
+    """Status of a single requirement in the evidence map."""
+    requirement_id: str
+    description: str
+    status: RequirementStatus
+    evidence_count: int = 0
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class ScenarioResult(BaseModel):
+    """Complete result of scenario reasoning."""
+    plan: ScenarioPlan
+    evidence_map: list[EvidenceMapEntry]
+    derived_conclusions: list[DerivedConclusion] = Field(default_factory=list)
+    supported_facts: list[str] = Field(default_factory=list)
+    unsupported_requirements: list[str] = Field(default_factory=list)
+    missing_user_facts: list[str] = Field(default_factory=list)
+    source_conflicts: list[str] = Field(default_factory=list)
+    overall_sufficiency: EvidenceSufficiency = EvidenceSufficiency.EMPTY
+    all_evidence: list[EvidenceChunk] = Field(default_factory=list)

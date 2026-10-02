@@ -96,7 +96,7 @@ Significant architectural or design decisions must be:
 
 Read `PRD.md` for full scope. Summary:
 
-**MVP (Tier 1 & Tier 2):** 6-language (EN, HI, GU, MR, BN, TA) text + Sarvam voice chat, central cooperative info + Gujarat
+**MVP (Tier 1 & Tier 2):** 11-language (EN, HI, GU, MR, BN, TA, TE, KN, PA, OR, ML) text + Sarvam voice chat, central cooperative info + Gujarat
 rules, 8-15 curated schemes, PMFBY, agriculture workflows, RBI/PMJDY financial
 literacy, 9-stage grievance workflow (text + status lookup), citations, confidence, abstention, responsive Next.js PWA.
 
@@ -119,6 +119,7 @@ to `CLAUDE.md` rather than silently doing it.
 | Tavily | Primary web search | Rate limited |
 | Firecrawl | Web crawl / scrape fallback | Rate limited |
 | Azure Cognitive Services | Fallback STT only | Rate limited |
+| Clerk | Authentication (optional) | 10K MAU |
 | Render | Backend hosting | Sleeps on inactivity |
 | Vercel | Frontend hosting | Hobby tier |
 

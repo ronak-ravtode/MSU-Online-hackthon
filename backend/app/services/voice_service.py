@@ -16,7 +16,7 @@ from app.providers.azure_voice import AzureVoiceProvider
 logger = logging.getLogger(__name__)
 
 # Strict timeouts per provider (seconds)
-_STT_TIMEOUT = 15
+_STT_TIMEOUT = 30
 _TTS_TIMEOUT = 20
 
 

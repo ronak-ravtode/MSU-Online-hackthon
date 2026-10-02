@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 
 /**
  * Server API route /api/grievance/detect
@@ -14,12 +15,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  const { getToken } = await auth();
+  const token = await getToken();
   const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
 
   try {
     const res = await fetch(`${backendUrl}/grievances`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(body),
     });
     if (res.ok) {

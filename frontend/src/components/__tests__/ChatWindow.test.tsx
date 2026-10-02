@@ -39,6 +39,17 @@ vi.mock("@/lib/api", () => ({
     abstained: false,
     follow_up_question: null,
   }),
+  sendChatStream: vi.fn().mockImplementation(
+    async (
+      _payload: unknown,
+      onEvent: (event: { event: string; data: Record<string, unknown> }) => void,
+    ) => {
+      onEvent({ event: "step", data: { id: "retrieval_start", label: "Searching", detail: "Querying", status: "active" } });
+      onEvent({ event: "step", data: { id: "retrieval_start", label: "Searching", detail: "Querying", status: "completed" } });
+      onEvent({ event: "token", data: { text: "ok " } });
+      onEvent({ event: "metadata", data: { domain: "unknown", confidence: 0 } });
+    },
+  ),
 }));
 
 beforeEach(() => {
@@ -80,8 +91,10 @@ describe("ChatWindow ui_language_explicit", () => {
     await act(async () => {
       fireEvent.click(screen.getByLabelText(/send/i));
     });
-    expect(api.sendChat).toHaveBeenCalledWith(
+    expect(api.sendChatStream).toHaveBeenCalledWith(
       expect.objectContaining({ ui_language_explicit: false }),
+      expect.any(Function),
+      expect.any(AbortSignal),
     );
   });
 
@@ -110,8 +123,10 @@ describe("ChatWindow ui_language_explicit", () => {
       fireEvent.click(screen.getByLabelText(/send/i));
     });
 
-    expect(api.sendChat).toHaveBeenLastCalledWith(
+    expect(api.sendChatStream).toHaveBeenLastCalledWith(
       expect.objectContaining({ language: "hi", ui_language_explicit: true }),
+      expect.any(Function),
+      expect.any(AbortSignal),
     );
   });
 
@@ -131,8 +146,10 @@ describe("ChatWindow ui_language_explicit", () => {
       fireEvent.click(screen.getByLabelText(/send/i));
     });
 
-    expect(api.sendChat).toHaveBeenCalledWith(
+    expect(api.sendChatStream).toHaveBeenCalledWith(
       expect.objectContaining({ language: "hi", ui_language_explicit: true }),
+      expect.any(Function),
+      expect.any(AbortSignal),
     );
   });
 
@@ -158,8 +175,10 @@ describe("ChatWindow ui_language_explicit", () => {
     await act(async () => {
       fireEvent.click(screen.getByLabelText(/send/i));
     });
-    expect(api.sendChat).toHaveBeenLastCalledWith(
+    expect(api.sendChatStream).toHaveBeenLastCalledWith(
       expect.objectContaining({ language: "hi", ui_language_explicit: true }),
+      expect.any(Function),
+      expect.any(AbortSignal),
     );
 
     // Second message without further switching -> explicit false
@@ -169,8 +188,10 @@ describe("ChatWindow ui_language_explicit", () => {
     await act(async () => {
       fireEvent.click(screen.getByLabelText(/send/i));
     });
-    expect(api.sendChat).toHaveBeenLastCalledWith(
+    expect(api.sendChatStream).toHaveBeenLastCalledWith(
       expect.objectContaining({ language: "hi", ui_language_explicit: false }),
+      expect.any(Function),
+      expect.any(AbortSignal),
     );
   });
 });

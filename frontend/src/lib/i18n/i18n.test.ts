@@ -3,7 +3,7 @@ import { LOCALES } from "./i18n";
 import { translate } from "./dictionaries";
 
 test("exports supported locales", () => {
-  expect(LOCALES).toEqual(["en", "hi", "gu"]);
+  expect(LOCALES).toEqual(["en", "hi", "gu", "mr", "bn", "ta", "te", "kn", "pa", "or", "ml"]);
 });
 
 test("translates known keys for en and hi", () => {

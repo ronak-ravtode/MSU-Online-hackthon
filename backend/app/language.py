@@ -75,6 +75,24 @@ def normalize_language(selected: str, text: str) -> str:
     # Gujarati script → Gujarati
     if ratios.get("gujarati", 0.0) >= threshold:
         return "gu"
+    # Tamil script → Tamil
+    if ratios.get("tamil", 0.0) >= threshold:
+        return "ta"
+    # Telugu script → Telugu
+    if ratios.get("telugu", 0.0) >= threshold:
+        return "te"
+    # Kannada script → Kannada
+    if ratios.get("kannada", 0.0) >= threshold:
+        return "kn"
+    # Gurmukhi script → Punjabi
+    if ratios.get("gurmukhi", 0.0) >= threshold:
+        return "pa"
+    # Odia script → Odia
+    if ratios.get("odia", 0.0) >= threshold:
+        return "or"
+    # Malayalam script → Malayalam
+    if ratios.get("malayalam", 0.0) >= threshold:
+        return "ml"
     # Latin script: trust the selected language when its stopwords appear.
     if selected in cfg["stopwords"] and _stopword_bias(text, selected) > 0:
         return selected
@@ -88,13 +106,19 @@ _EXPLICIT_LANG_NAMES = {
     "gujarati": "gu", "ગુજરાતી": "gu",
     "marathi": "mr", "मराठी": "mr",
     "bengali": "bn", "bangla": "bn", "বাংলা": "bn",
+    "tamil": "ta", "தமிழ்": "ta",
+    "telugu": "te", "తెలుగు": "te",
+    "kannada": "kn", "ಕನ್ನಡ": "kn",
+    "punjabi": "pa", "ਪੰਜਾਬੀ": "pa", "gurmukhi": "pa",
+    "odia": "or", "ଓଡ଼ିଆ": "or",
+    "malayalam": "ml", "മലയാളം": "ml",
 }
 _EXPLICIT_RE = re.compile(
     r"(?:respond|reply|answer|explain|समझाओ|समजावो|बताओ|समझाएं|in|में|मां|માં)"
     r"\s+"
-    r"(english|angrezi|hindi|हिंदी|gujarati|ગુજરાતી|marathi|मराठी|bengali|bangla|বাংলা)"
+    r"(english|angrezi|hindi|हिंदी|gujarati|ગુજરાતી|marathi|मराठी|bengali|bangla|বাংলা|tamil|தமிழ்|telugu|తెలుగు|kannada|ಕನ್ನಡ|punjabi|ਪੰਜਾਬੀ|gurmukhi|odia|ଓଡ଼ିଆ|malayalam|മലയാളം)"
     r"|"
-    r"(english|angrezi|hindi|हिंदी|gujarati|ગુજરાતી|marathi|मराठी|bengali|bangla|বাংলা)"
+    r"(english|angrezi|hindi|हिंदी|gujarati|ગુજરાતી|marathi|मराठी|bengali|bangla|বাংলা|tamil|தமிழ்|telugu|తెలుగు|kannada|ಕನ್ನಡ|punjabi|ਪੰਜਾਬੀ|gurmukhi|odia|ଓଡ଼ିଆ|malayalam|മലയാളം)"
     r"\s+"
     r"(?:respond|reply|answer|explain|समझाओ|समजावो|बताओ|समझाएं|in|में|मां|માં)",
     re.IGNORECASE,
@@ -126,22 +150,30 @@ def detect_query_languages(text: str) -> dict:
     if ratios.get("devanagari", 0.0) > 0:
         # distinguish hi/mr via stopword bias (never force Hindi)
         languages.add("mr" if _stopword_bias(text, "mr") > _stopword_bias(text, "hi") else "hi")
+    if ratios.get("tamil", 0.0) > 0:
+        languages.add("ta")
+    if ratios.get("telugu", 0.0) > 0:
+        languages.add("te")
+    if ratios.get("kannada", 0.0) > 0:
+        languages.add("kn")
+    if ratios.get("gurmukhi", 0.0) > 0:
+        languages.add("pa")
+    if ratios.get("odia", 0.0) > 0:
+        languages.add("or")
+    if ratios.get("malayalam", 0.0) > 0:
+        languages.add("ml")
     latin_letters = [c for c in text if c.isalpha() and c.isascii()]
     if latin_letters:
         languages.add("en")
     # DOMINANT: highest-ratio Indic script above the configured threshold.
     dominant = None
     best, best_r = None, 0.0
+    _indic_scripts = ("gujarati", "bengali", "devanagari", "tamil", "telugu", "kannada", "gurmukhi", "odia", "malayalam")
     for name, r in ratios.items():
-        if name in ("gujarati", "bengali", "devanagari") and r > best_r:
+        if name in _indic_scripts and r > best_r:
             best, best_r = name, r
     if best is not None and best_r >= cfg["script_threshold"]:
-        if best == "gujarati":
-            dominant = "gu"
-        elif best == "bengali":
-            dominant = "bn"
-        elif best == "devanagari":
-            dominant = "mr" if _stopword_bias(text, "mr") > _stopword_bias(text, "hi") else "hi"
+        dominant = _SCRIPT_TO_LANG.get(best, "en")
     elif latin_letters:
         dominant = "en"
     language_mix = None
@@ -178,7 +210,11 @@ def detect_query_languages(text: str) -> dict:
     }
 
 
-_SCRIPT_TO_LANG = {"gujarati": "gu", "bengali": "bn", "devanagari": "hi"}
+_SCRIPT_TO_LANG = {
+    "gujarati": "gu", "bengali": "bn", "devanagari": "hi",
+    "tamil": "ta", "telugu": "te", "kannada": "kn",
+    "gurmukhi": "pa", "odia": "or", "malayalam": "ml",
+}
 
 
 def _script_runs(text: str) -> list[tuple[str, str]]:
@@ -228,7 +264,7 @@ def english_retrieval_query(text: str, detected: dict | None, settings) -> str:
     from app.providers.translator import AzureTranslator
 
     runs = _script_runs(text)
-    if not any(script in ("gujarati", "bengali", "devanagari") for script, _ in runs):
+    if not any(script in _SCRIPT_TO_LANG and script != "latin" for script, _ in runs):
         return text
     try:
         translator = AzureTranslator(settings)
@@ -237,7 +273,11 @@ def english_retrieval_query(text: str, detected: dict | None, settings) -> str:
             if script in ("latin", "other"):
                 out.append(run_text)
             else:
-                out.append(translator.translate(run_text, to="en", source=_SCRIPT_TO_LANG[script]))
+                lang_code = _SCRIPT_TO_LANG.get(script, "en")
+                if lang_code == "en":
+                    out.append(run_text)
+                else:
+                    out.append(translator.translate(run_text, to="en", source=lang_code))
         return "".join(out)
     except Exception:
         return text

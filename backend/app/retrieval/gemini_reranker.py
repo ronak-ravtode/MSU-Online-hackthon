@@ -43,7 +43,11 @@ class GeminiReranker:
         else:
             self._enabled = True
             self.model = getattr(settings, "grievance_gemini_model", settings.gemini_model)
-            self.client = genai.Client(api_key=self._api_key)
+            self._timeout_s = float(settings.gemini_reranker_timeout_s)
+            self.client = genai.Client(
+                api_key=self._api_key,
+                http_options=types.HttpOptions(timeout=int(self._timeout_s * 1000)),
+            )
             logger.info("Gemini reranker initialized with model=%s", self.model)
 
     def _call_gemini(
@@ -59,14 +63,46 @@ class GeminiReranker:
         if not self._enabled or not self.client:
             return None
 
-        # Try Gemini first
-        result = self._try_gemini(query, candidates, classification)
+        self._last_gemini_error = None
+        try:
+            result = self._try_gemini(query, candidates, classification)
+        except Exception as exc:
+            self._last_gemini_error = exc
+            result = None
+            logger.warning("Gemini reranking failed: %s", exc)
         if result is not None:
+            result = dict(result)
+            result["reranker_used"] = "gemini"
+            logger.info("Gemini reranking complete")
             return result
-        
-        # Fallback to Jina reranker
-        logger.info("Gemini failed, falling back to Jina reranker")
-        return self._try_jina_fallback(query, candidates)
+
+        reason = self._gemini_failure_reason()
+        logger.info("Gemini reranking unavailable; falling back to Jina (%s)", reason)
+        try:
+            result = self._try_jina_fallback(query, candidates)
+        except Exception as exc:
+            logger.warning("Jina fallback reranking failed: %s", exc)
+            result = None
+        if result is None:
+            return None
+        result = dict(result)
+        result["reranker_used"] = "jina"
+        result["reranker_fallback_reason"] = reason
+        logger.info("Jina reranking complete (Gemini fallback)")
+        return result
+
+    def _gemini_failure_reason(self) -> str:
+        """Return a stable provider reason for structured fallback telemetry."""
+        error = getattr(self, "_last_gemini_error", None)
+        if isinstance(error, TimeoutError) or "timeout" in str(error).lower():
+            return "gemini_timeout"
+        message = str(error).lower()
+        for status in ("429", "500", "502", "503"):
+            if status in message:
+                return f"gemini_{status}"
+        if "connection" in message or "connect" in message:
+            return "gemini_connection_error"
+        return "gemini_unavailable"
     
     def _try_gemini(
         self,
@@ -100,6 +136,9 @@ DOCUMENT CANDIDATES:
                 contents=[system_prompt, user_prompt],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True,
+                    ),
                     response_schema={
                         "type": "object",
                         "properties": {
@@ -136,7 +175,8 @@ DOCUMENT CANDIDATES:
             logger.info("Gemini reranker raw response (first 500 chars): %s", str(text)[:500])
             return json.loads(text)
         except Exception as e:
-            logger.warning(f"Gemini reranking call failed: {e}")
+            self._last_gemini_error = e
+            logger.warning("Gemini reranking call failed: %s", e)
             return None
     
     def _try_jina_fallback(
@@ -603,6 +643,9 @@ Every supplied candidate must appear exactly once.
         for rank, result in enumerate(ranked_results[:top_k], start=1):
             result = dict(result)
             result["gemini_pre_rank"] = rank
+            result["reranker"] = data.get("reranker_used", "gemini")
+            if data.get("reranker_fallback_reason"):
+                result["reranker_fallback_reason"] = data["reranker_fallback_reason"]
             final_results.append(result)
 
         applicable_count = sum(1 for r in final_results if r.get("rerank_applicable", False))
@@ -657,10 +700,16 @@ Every supplied candidate must appear exactly once.
                 continue
             result = dict(result)
             result["gemini_final_rank"] = rank
-            result["reranker"] = "gemini_final"
+            result["reranker"] = data.get("reranker_used", "gemini_final")
+            if data.get("reranker_fallback_reason"):
+                result["reranker_fallback_reason"] = data["reranker_fallback_reason"]
             final_results.append(result)
 
-        logger.info(f"Gemini final reranking complete: {len(final_results)} final chunks")
+        logger.info(
+            "%s final reranking complete: %d final chunks",
+            "Jina reranking (Gemini fallback)" if data.get("reranker_used") == "jina" else "Gemini",
+            len(final_results),
+        )
         return final_results
 
     def _passthrough_final_rerank(self, query: str, candidates: list[dict], top_k: int) -> list[dict]:

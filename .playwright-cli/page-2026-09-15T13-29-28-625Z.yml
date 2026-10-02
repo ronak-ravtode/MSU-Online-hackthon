@@ -1,0 +1,265 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#content"
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "JanSahay logo JanSahay" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - img "JanSahay logo" [ref=e8]
+          - generic [ref=e9]: JanSahay
+        - navigation "Primary" [ref=e10]:
+          - link "Schemes" [ref=e11] [cursor=pointer]:
+            - /url: /schemes
+          - link "Services" [ref=e12] [cursor=pointer]:
+            - /url: /services
+          - link "Legal" [ref=e13] [cursor=pointer]:
+            - /url: /legal
+          - link "Grievance" [ref=e14] [cursor=pointer]:
+            - /url: /grievance
+      - generic [ref=e15]:
+        - link "FAQ" [ref=e16] [cursor=pointer]:
+          - /url: /faq
+        - button "Change language" [ref=e18] [cursor=pointer]: EN
+        - link "Chat" [ref=e21] [cursor=pointer]:
+          - /url: /chat
+  - main [ref=e22]:
+    - generic [ref=e23]:
+      - generic [ref=e29]:
+        - generic [ref=e30]: Ministry of Cooperation • Official Guidance
+        - heading "Your cooperative questions. Answered simply." [level=1] [ref=e32]
+        - paragraph [ref=e33]: From government schemes and PACS services to member rights, benefits, laws and grievances — JanSahay turns complex official information into clear, reliable answers — in the language you understand best.
+        - generic [ref=e34]:
+          - link [ref=e35] [cursor=pointer]:
+            - /url: /chat
+            - button "Ask JanSahay →" [ref=e36]
+          - link [ref=e37] [cursor=pointer]:
+            - /url: /schemes
+            - button "Browse Schemes" [ref=e38]
+        - generic [ref=e39] [cursor=pointer]:
+          - generic [ref=e40]: Official & Verified
+          - generic [ref=e45]: Simple & Clear
+          - generic [ref=e51]: 6 Languages
+          - generic [ref=e57]: Secure & Private
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - paragraph [ref=e65]: Capabilities
+          - heading "Engineered for clarity" [level=2] [ref=e66]
+          - paragraph [ref=e67]: Precision-built to transform complex governance into actionable, evidence-backed guidance.
+        - generic [ref=e70]:
+          - generic [ref=e76] [cursor=pointer]:
+            - heading "Multilingual" [level=3] [ref=e77]
+            - paragraph [ref=e78]: Instantly translate complex governance — schemes, rights, legal provisions — into clear, native-language answers.
+          - generic [ref=e84] [cursor=pointer]:
+            - heading "Voice-enabled" [level=3] [ref=e85]
+            - paragraph [ref=e86]: Ask questions and receive answers aloud — designed for every literacy level.
+          - generic [ref=e92] [cursor=pointer]:
+            - heading "Evidence-backed" [level=3] [ref=e93]
+            - paragraph [ref=e94]: Every response anchored to verified official sources and legal citations.
+          - generic [ref=e99] [cursor=pointer]:
+            - heading "6 Languages" [level=3] [ref=e100]
+            - paragraph [ref=e101]: Full support across Hindi, Gujarati, Marathi, Bengali, Tamil, and English.
+          - generic [ref=e107] [cursor=pointer]:
+            - heading "Secure & Private" [level=3] [ref=e108]
+            - paragraph [ref=e109]: Your conversations stay protected — no data sold, no tracking.
+          - generic [ref=e114] [cursor=pointer]:
+            - heading "Guided Next Steps" [level=3] [ref=e115]
+            - paragraph [ref=e116]: From eligibility checks to grievance filing — actionable paths, not just information.
+          - generic [ref=e122] [cursor=pointer]:
+            - heading "Multilingual" [level=3] [ref=e123]
+            - paragraph [ref=e124]: Instantly translate complex governance — schemes, rights, legal provisions — into clear, native-language answers.
+          - generic [ref=e130] [cursor=pointer]:
+            - heading "Voice-enabled" [level=3] [ref=e131]
+            - paragraph [ref=e132]: Ask questions and receive answers aloud — designed for every literacy level.
+          - generic [ref=e138] [cursor=pointer]:
+            - heading "Evidence-backed" [level=3] [ref=e139]
+            - paragraph [ref=e140]: Every response anchored to verified official sources and legal citations.
+          - generic [ref=e145] [cursor=pointer]:
+            - heading "6 Languages" [level=3] [ref=e146]
+            - paragraph [ref=e147]: Full support across Hindi, Gujarati, Marathi, Bengali, Tamil, and English.
+          - generic [ref=e153] [cursor=pointer]:
+            - heading "Secure & Private" [level=3] [ref=e154]
+            - paragraph [ref=e155]: Your conversations stay protected — no data sold, no tracking.
+          - generic [ref=e160] [cursor=pointer]:
+            - heading "Guided Next Steps" [level=3] [ref=e161]
+            - paragraph [ref=e162]: From eligibility checks to grievance filing — actionable paths, not just information.
+      - generic [ref=e164]:
+        - generic [ref=e166]:
+          - paragraph [ref=e167]: "0"
+          - paragraph [ref=e168]: Schemes
+        - generic [ref=e171]:
+          - paragraph [ref=e172]: "0"
+          - paragraph [ref=e173]: Services
+        - generic [ref=e176]:
+          - paragraph [ref=e177]: "0"
+          - paragraph [ref=e178]: FAQ
+        - generic [ref=e181]:
+          - paragraph [ref=e182]: "0"
+          - paragraph [ref=e183]: Secure & Private
+        - generic [ref=e186]:
+          - paragraph [ref=e187]: "0"
+          - paragraph [ref=e188]: 6 Languages
+        - generic [ref=e191]:
+          - paragraph [ref=e192]: "0"
+          - paragraph [ref=e193]: Grievance
+        - generic [ref=e196]:
+          - paragraph [ref=e197]: "0"
+          - paragraph [ref=e198]: Official & Verified
+      - generic [ref=e199]:
+        - generic [ref=e200]:
+          - paragraph [ref=e201]: Capabilities
+          - heading "How it works" [level=2] [ref=e202]
+        - generic [ref=e204]:
+          - generic [ref=e205]:
+            - generic [ref=e206] [cursor=pointer]:
+              - generic [ref=e207]: "01"
+              - generic [ref=e209]:
+                - generic [ref=e210]: Step 01
+                - heading "Ask anything" [level=3] [ref=e211]
+                - paragraph [ref=e212]: Type or speak in Hindi, Gujarati, Marathi, Bengali, Tamil, or English.
+            - generic [ref=e213] [cursor=pointer]:
+              - generic [ref=e214]: "02"
+              - generic [ref=e216]:
+                - generic [ref=e217]: Step 02
+                - heading "Get answers" [level=3] [ref=e218]
+                - paragraph [ref=e219]: AI-powered responses grounded in official sources and legal provisions.
+            - generic [ref=e220] [cursor=pointer]:
+              - generic [ref=e221]: "03"
+              - generic [ref=e223]:
+                - generic [ref=e224]: Step 03
+                - heading "Verify details" [level=3] [ref=e225]
+                - paragraph [ref=e226]: Cross-check eligibility, required documents, and applicable rules.
+            - generic [ref=e227] [cursor=pointer]:
+              - generic [ref=e228]: "04"
+              - generic [ref=e230]:
+                - generic [ref=e231]: Step 04
+                - heading "Take action" [level=3] [ref=e232]
+                - paragraph [ref=e233]: Apply for schemes, file grievances, or track your applications.
+            - generic [ref=e234] [cursor=pointer]:
+              - generic [ref=e235]: "05"
+              - generic [ref=e237]:
+                - generic [ref=e238]: Step 05
+                - heading "Get closure" [level=3] [ref=e239]
+                - paragraph [ref=e240]: Monitor progress and receive updates until your issue is resolved.
+          - generic [ref=e242]:
+            - button "Go to step 1" [ref=e243] [cursor=pointer]
+            - button "Go to step 2" [ref=e244] [cursor=pointer]
+            - button "Go to step 3" [ref=e245] [cursor=pointer]
+            - button "Go to step 4" [ref=e246] [cursor=pointer]
+            - button "Go to step 5" [ref=e247] [cursor=pointer]
+      - generic [ref=e248]:
+        - generic [ref=e249]:
+          - paragraph [ref=e250]: Capabilities
+          - heading "Trusted by Cooperative Members Across India" [level=2] [ref=e251]
+        - generic [ref=e254]:
+          - generic [ref=e255] [cursor=pointer]:
+            - generic [ref=e256]:
+              - generic [ref=e257]: P
+              - generic [ref=e258]:
+                - paragraph [ref=e259]: Priya Sharma
+                - paragraph [ref=e260]: PACS Member, Gujarat
+            - paragraph [ref=e261]: “JanSahay helped me understand my rights under the cooperative society rules. The multilingual support was a game changer.”
+          - generic [ref=e262] [cursor=pointer]:
+            - generic [ref=e263]:
+              - generic [ref=e264]: R
+              - generic [ref=e265]:
+                - paragraph [ref=e266]: Rajesh Kumar
+                - paragraph [ref=e267]: Farmer, Maharashtra
+            - paragraph [ref=e268]: “I filed a grievance about PMFBY claim delay through this platform. The step-by-step guidance made it so easy.”
+          - generic [ref=e269] [cursor=pointer]:
+            - generic [ref=e270]:
+              - generic [ref=e271]: A
+              - generic [ref=e272]:
+                - paragraph [ref=e273]: Ananya Das
+                - paragraph [ref=e274]: SHG Leader, West Bengal
+            - paragraph [ref=e275]: “The schemes section helped me discover benefits I didn't know existed. Now my entire group uses this assistant.”
+          - generic [ref=e276] [cursor=pointer]:
+            - generic [ref=e277]:
+              - generic [ref=e278]: M
+              - generic [ref=e279]:
+                - paragraph [ref=e280]: Mohammed Irfan
+                - paragraph [ref=e281]: Cooperative Secretary, Karnataka
+            - paragraph [ref=e282]: “Finally a tool that explains legal provisions in simple language. I recommend it to every cooperative member.”
+          - generic [ref=e283] [cursor=pointer]:
+            - generic [ref=e284]:
+              - generic [ref=e285]: L
+              - generic [ref=e286]:
+                - paragraph [ref=e287]: Lakshmi Nair
+                - paragraph [ref=e288]: Dairy Farmer, Kerala
+            - paragraph [ref=e289]: “Voice support in Malayalam meant my mother could use it too. This is what inclusive governance looks like.”
+          - generic [ref=e290] [cursor=pointer]:
+            - generic [ref=e291]:
+              - generic [ref=e292]: P
+              - generic [ref=e293]:
+                - paragraph [ref=e294]: Priya Sharma
+                - paragraph [ref=e295]: PACS Member, Gujarat
+            - paragraph [ref=e296]: “JanSahay helped me understand my rights under the cooperative society rules. The multilingual support was a game changer.”
+          - generic [ref=e297] [cursor=pointer]:
+            - generic [ref=e298]:
+              - generic [ref=e299]: R
+              - generic [ref=e300]:
+                - paragraph [ref=e301]: Rajesh Kumar
+                - paragraph [ref=e302]: Farmer, Maharashtra
+            - paragraph [ref=e303]: “I filed a grievance about PMFBY claim delay through this platform. The step-by-step guidance made it so easy.”
+          - generic [ref=e304] [cursor=pointer]:
+            - generic [ref=e305]:
+              - generic [ref=e306]: A
+              - generic [ref=e307]:
+                - paragraph [ref=e308]: Ananya Das
+                - paragraph [ref=e309]: SHG Leader, West Bengal
+            - paragraph [ref=e310]: “The schemes section helped me discover benefits I didn't know existed. Now my entire group uses this assistant.”
+          - generic [ref=e311] [cursor=pointer]:
+            - generic [ref=e312]:
+              - generic [ref=e313]: M
+              - generic [ref=e314]:
+                - paragraph [ref=e315]: Mohammed Irfan
+                - paragraph [ref=e316]: Cooperative Secretary, Karnataka
+            - paragraph [ref=e317]: “Finally a tool that explains legal provisions in simple language. I recommend it to every cooperative member.”
+          - generic [ref=e318] [cursor=pointer]:
+            - generic [ref=e319]:
+              - generic [ref=e320]: L
+              - generic [ref=e321]:
+                - paragraph [ref=e322]: Lakshmi Nair
+                - paragraph [ref=e323]: Dairy Farmer, Kerala
+            - paragraph [ref=e324]: “Voice support in Malayalam meant my mother could use it too. This is what inclusive governance looks like.”
+  - contentinfo [ref=e325]:
+    - generic [ref=e326]:
+      - generic [ref=e327]:
+        - generic [ref=e328]:
+          - link "JanSahay logo JanSahay" [ref=e329] [cursor=pointer]:
+            - /url: /
+            - img "JanSahay logo" [ref=e330]
+            - generic [ref=e331]: JanSahay
+          - paragraph [ref=e332]: Government assistance for Indian cooperatives.
+        - generic [ref=e333]:
+          - heading "Schemes & Services" [level=3] [ref=e334]
+          - list [ref=e335]:
+            - listitem [ref=e336]:
+              - link "Schemes" [ref=e337] [cursor=pointer]:
+                - /url: /schemes
+            - listitem [ref=e338]:
+              - link "Services" [ref=e339] [cursor=pointer]:
+                - /url: /services
+        - generic [ref=e340]:
+          - heading "Legal & Support" [level=3] [ref=e341]
+          - list [ref=e342]:
+            - listitem [ref=e343]:
+              - link "Legal" [ref=e344] [cursor=pointer]:
+                - /url: /legal
+            - listitem [ref=e345]:
+              - link "FAQ" [ref=e346] [cursor=pointer]:
+                - /url: /faq
+            - listitem [ref=e347]:
+              - link "Grievance" [ref=e348] [cursor=pointer]:
+                - /url: /grievance
+        - generic [ref=e349]:
+          - heading "Contact" [level=3] [ref=e350]
+          - list [ref=e351]:
+            - listitem [ref=e352]:
+              - link "Chat" [ref=e353] [cursor=pointer]:
+                - /url: /chat
+            - listitem [ref=e354]: support@jansayah.gov.in
+            - listitem [ref=e355]: 1800-XXX-XXXX (Toll free)
+      - generic [ref=e356]: © 2026 JanSahay. Built for Indian cooperatives.
+  - button "Open chat" [ref=e357] [cursor=pointer]:
+    - img "JanSahay Assistant" [ref=e359]

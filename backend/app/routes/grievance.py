@@ -11,9 +11,10 @@ fields exist and what input control they need, and (b) write
 already-confirmed field values directly onto the draft.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
+from app.auth import require_auth
 from app.config import get_settings
 from app.conversation_store import ensure_conversation
 from app.grievance.field_detector import GrievanceFieldDetector
@@ -110,7 +111,7 @@ def get_grievance_status(reference: str) -> dict:
 
 
 @router.get("/{conversation_id}/fields")
-def get_grievance_fields(conversation_id: str, language: str = "en") -> dict:
+def get_grievance_fields(conversation_id: str, language: str = "en", user_id: str = Depends(require_auth)) -> dict:
     """Return the mandatory/optional field schema for the draft that is
     already attached to this conversation (created by the normal
     `POST /grievances` detection call), each tagged with the input
@@ -157,7 +158,7 @@ class GrievanceAnswerRequest(BaseModel):
 
 
 @router.post("/answer")
-def submit_grievance_field_answer(req: GrievanceAnswerRequest) -> dict:
+def submit_grievance_field_answer(req: GrievanceAnswerRequest, user_id: str = Depends(require_auth)) -> dict:
     """Record one confirmed field answer from the tab-based wizard onto
     the draft. Does not re-run classification/extraction — the field
     name and value are already known/confirmed by the user at this
@@ -194,7 +195,7 @@ class GrievanceFinalizeRequest(BaseModel):
 
 
 @router.post("/finalize")
-def finalize_grievance_draft(req: GrievanceFinalizeRequest) -> dict:
+def finalize_grievance_draft(req: GrievanceFinalizeRequest, user_id: str = Depends(require_auth)) -> dict:
     """Build the final read-only draft table: canonical grievance
     object (same shape as the chat-mode `grievance` field, so the
     existing GrievanceCard-style rendering can be reused), plus a
@@ -362,7 +363,7 @@ class GrievanceClarifyRequest(BaseModel):
 
 
 @router.post("/clarify")
-def clarify_grievance(req: GrievanceClarifyRequest) -> dict:
+def clarify_grievance(req: GrievanceClarifyRequest, user_id: str = Depends(require_auth)) -> dict:
     """Reclassify a grievance after the citizen provides clarification.
 
     This replaces the old grievance draft with a fresh one built from

@@ -13,14 +13,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import queue
+import re
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.auth import require_auth
 from app.config import Settings, get_settings
 from app.domains import get_anchor_store
 from app.grievance.workflow import GrievanceWorkflow, load_grievance_state
@@ -567,11 +571,12 @@ def _translate_grievance_response_back(
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     session_id: str
-    language: Literal["en", "hi", "gu", "mr", "bn", "ta"]
+    language: Literal["en", "hi", "gu", "mr", "bn", "ta", "te", "kn", "pa", "or", "ml"]
     ui_language_explicit: bool = False
     state: str | None = None
     as_of_date: str | None = None
     history: list[dict] | None = None
+    mode: Literal["static", "web", "rag_web"] | None = None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -593,7 +598,12 @@ def _translate_to_english(question: str, input_lang: str, settings: Settings) ->
     sarvam = SarvamTranslator(settings)
     if sarvam.configured:
         try:
-            return sarvam.translate(question, to="en", source=input_lang)
+            return sarvam.translate(
+                question,
+                to="en",
+                source=input_lang,
+                translation_stage="input_query",
+            )
         except Exception:
             logger.warning("Sarvam translation failed, trying Azure")
     try:
@@ -613,21 +623,47 @@ def _translate_from_english(text: str, target_lang: str, settings: Settings) -> 
     """
     if target_lang == "en":
         return text
+    text = str(text)
+    if not text or not text.strip():
+        return text
+    translation_start = time.monotonic()
+    citation_tokens: dict[str, str] = {}
+    protected_text = text
+    for index, marker in enumerate(re.findall(r"\[(?:chunk|web_)[^\]]+\]", text)):
+        token = f"TRANSLATIONCITATION{index}END"
+        citation_tokens[token] = marker
+        protected_text = protected_text.replace(marker, token, 1)
     sarvam = SarvamTranslator(settings)
     if sarvam.configured:
         try:
-            translated = sarvam.translate(text, to=target_lang, source="en")
-            if translated != text:
+            translated = sarvam.translate(
+                protected_text,
+                to=target_lang,
+                source="en",
+                translation_stage="final_answer",
+            )
+            if translated != protected_text:
+                translated = _restore_translation_tokens(translated, citation_tokens)
+                logger.info(
+                    "translation_stage=final_answer final_translation_ms=%.0f",
+                    (time.monotonic() - translation_start) * 1000,
+                )
                 return translated
         except Exception:
             logger.warning("Sarvam back-translation failed")
     try:
-        translated = AzureTranslator(settings).translate(text, to=target_lang, source="en")
-        if translated != text:
-            return translated
+        translated = AzureTranslator(settings).translate(protected_text, to=target_lang, source="en")
+        if translated != protected_text:
+            return _restore_translation_tokens(translated, citation_tokens)
     except Exception:
         logger.warning("Azure back-translation failed")
     logger.warning("All translation providers failed for '%s' → %s", target_lang, text[:80])
+    return text
+
+
+def _restore_translation_tokens(text: str, tokens: dict[str, str]) -> str:
+    for token, original in tokens.items():
+        text = text.replace(token, original)
     return text
 
 
@@ -816,7 +852,7 @@ async def _resolve_context(req: ChatRequest) -> _ChatContext:
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest) -> dict:
+async def chat(req: ChatRequest, user_id: str = Depends(require_auth)) -> dict:
     question = req.question.strip()
     if not question:
         return _abstain(req.language, session_id=req.session_id)
@@ -1003,6 +1039,7 @@ async def chat(req: ChatRequest) -> dict:
             lang=ctx.lang,
             session_id=req.session_id,
             language_mix=ctx.language_mix,
+            pipeline_mode=req.mode,
         )
 
         # The LLM is instructed to respond in the user's language directly.
@@ -1034,7 +1071,128 @@ _THINKING_MESSAGES = {
     "mr": ["अधिकृत दस्तावेज आणि वेब शोधत आहोत...", "दोन्ही स्रोतांमधून पुराव्याचे विश्लेषण...", "उत्तर तयार करत आहोत..."],
     "bn": ["সরকারি নথিপত্র এবং ওয়েব খুঁজছি...", "উভয় উৎস থেকে প্রমাণ বিশ্লেষণ...", "উত্তর প্রস্তুত করছি..."],
     "ta": ["அதிகாரப்பூர்வ ஆவணங்கள் மற்றும் வலைத்தளத்தை தேடுகிறோம்...", "இரண்டு மூலங்களிலிருந்தும் சான்றுகளை பகுப்பாய்வு செய்கிறோம்...", "பதிலை தயாரிக்கிறோம்..."],
+    "te": ["అధికారిక పత్రాలు మరియు వెబ్‌ను శోధిస్తోంది...", "రెండు మూలాల నుండి సాక్ష్యాలను విశ్లేషిస్తోంది...", "సమాధానం తయారు చేస్తోంది..."],
+    "kn": ["ಅಧಿಕೃತ ದಸ್ತಾವೇಜುಗಳು ಮತ್ತು ವೆಬ್ ಹುಡುಕುತ್ತಿದೆ...", "ಎರಡೂ ಮೂಲಗಳಿಂದ ಸಾಕ್ಷ್ಯಗಳನ್ನು ವಿಶ್ಲೇಷಿಸುತ್ತಿದೆ...", "ಉತ್ತರ ತಯಾರಿಸುತ್ತಿದೆ..."],
+    "pa": ["ਸਰਕਾਰੀ ਦਸਤਾਵੇਜ਼ ਅਤੇ ਵੈੱਬ ਖੋਜ ਰਹੇ ਹਾਂ...", "ਦੋਵਾਂ ਸਰੋਤਾਂ ਤੋਂ ਸਬੂਤਾਂ ਦਾ ਵਿਸ਼ਲੇਸ਼ਣ...", "ਜਵਾਬ ਤਿਆਰ ਕਰ ਰਹੇ ਹਾਂ..."],
+    "or": ["ଅଧିକାରିକ ଦସ୍ତାବିଜ ଏବଂ ୱେବ୍ ଖୋଜୁଛି...", "ଉଭୟ ଉତ୍ସରୁ ପ୍ରମାଣ ବିଶ୍ଳେଷଣ...", "ଉତ୍ତର ପ୍ରସ୍ତୁତ କରୁଛି..."],
+    "ml": ["�ദ്യോഗിക രേഖകളും വെബും തിരയുന്നു...", "രണ്ട് ഉറവിടങ്ങളിൽ നിന്നുള്ള തെളിവുകൾ വിശകലനം ചെയ്യുന്നു...", "ഉത്തരം തയ്യാറാക്കുന്നു..."],
 }
+
+_STEP_LABELS = {
+    "en": {
+        "retrieval_start": "Searching sources",
+        "static_done": "Document search complete",
+        "web_done": "Web search complete",
+        "evidence_merge": "Merging evidence",
+        "llm_generate": "Generating response",
+        "citation_verify": "Verifying citations",
+    },
+    "hi": {
+        "retrieval_start": "स्रोत खोज रहे हैं",
+        "static_done": "दस्तावेज़ खोज पूर्ण",
+        "web_done": "वेब खोज पूर्ण",
+        "evidence_merge": "साक्ष्य मर्ज कर रहे हैं",
+        "llm_generate": "उत्तर तैयार कर रहे हैं",
+        "citation_verify": "उद्धरण सत्यापित कर रहे हैं",
+    },
+    "gu": {
+        "retrieval_start": "સ્ત્રોતો શોધી રહ્યા છીએ",
+        "static_done": "દસ્તાવેજ શોધ પૂર્ણ",
+        "web_done": "વેબ શોધ પૂર્ણ",
+        "evidence_merge": "પુરાવા મર્જ કરી રહ્યા છીએ",
+        "llm_generate": "જવાબ તૈયાર કરી રહ્યા છીએ",
+        "citation_verify": "સંદર્ભો ચકાસી રહ્યા છીએ",
+    },
+    "mr": {
+        "retrieval_start": "स्रोत शोधत आहोत",
+        "static_done": "दस्तावेज शोध पूर्ण",
+        "web_done": "वेब शोध पूर्ण",
+        "evidence_merge": "पुरावे मर्ज करत आहोत",
+        "llm_generate": "उत्तर तयार करत आहोत",
+        "citation_verify": "संदर्भ तपासत आहोत",
+    },
+    "bn": {
+        "retrieval_start": "উৎস খুঁজছি",
+        "static_done": "নথি অনুসন্ধান সম্পূর্ণ",
+        "web_done": "ওয়েব অনুসন্ধান সম্পূর্ণ",
+        "evidence_merge": "প্রমাণ মার্জ করছি",
+        "llm_generate": "উত্তর তৈরি করছি",
+        "citation_verify": "উদ্ধৃতি যাচাই করছি",
+    },
+    "ta": {
+        "retrieval_start": "ஆதாரங்களை தேடுகிறோம்",
+        "static_done": "ஆவண தேடல் நிறைவடைந்தது",
+        "web_done": "வலை தேடல் நிறைவடைந்தது",
+        "evidence_merge": "சான்றுகளை இணைக்கிறோம்",
+        "llm_generate": "பதிலை உருவாக்குகிறோம்",
+        "citation_verify": "மேற்கோள்களை சரிபார்க்கிறோம்",
+    },
+    "te": {
+        "retrieval_start": "మూలాలను శోధిస్తోంది",
+        "static_done": "పత్ర శోధన పూర్తయింది",
+        "web_done": "వెబ్ శోధన పూర్తయింది",
+        "evidence_merge": "సాక్ష్యాలను మిళితం చేస్తోంది",
+        "llm_generate": "సమాధానం రూపొందిస్తోంది",
+        "citation_verify": "ఉల్లేఖనాలను ధృవీకరిస్తోంది",
+    },
+    "kn": {
+        "retrieval_start": "ಮೂಲಗಳನ್ನು ಹುಡುಕುತ್ತಿದೆ",
+        "static_done": "ದಸ್ತಾವೇಜು ಹುಡುಕಾಟ ಪೂರ್ಣಗೊಂಡಿದೆ",
+        "web_done": "ವೆಬ್ ಹುಡುಕಾಟ ಪೂರ್ಣಗೊಂಡಿದೆ",
+        "evidence_merge": "ಸಾಕ್ಷ್ಯಗಳನ್ನು ಮಿಶ್ರಣ ಮಾಡುತ್ತಿದೆ",
+        "llm_generate": "ಉತ್ತರವನ್ನು ರಚಿಸುತ್ತಿದೆ",
+        "citation_verify": "ಉಲ್ಲೇಖಗಳನ್ನು ಪರಿಶೀಲಿಸುತ್ತಿದೆ",
+    },
+    "pa": {
+        "retrieval_start": "ਸਰੋਤ ਖੋਜ ਰਹੇ ਹਾਂ",
+        "static_done": "ਦਸਤਾਵੇਜ਼ ਖੋਜ ਪੂਰੀ",
+        "web_done": "ਵੈੱਬ ਖੋਜ ਪੂਰੀ",
+        "evidence_merge": "ਸਬੂਤ ਮਿਲਾ ਰਹੇ ਹਾਂ",
+        "llm_generate": "ਜਵਾਬ ਤਿਆਰ ਕਰ ਰਹੇ ਹਾਂ",
+        "citation_verify": "ਹਵਾਲੇ ਜਾਂਚ ਰਹੇ ਹਾਂ",
+    },
+    "or": {
+        "retrieval_start": "ଉତ୍ସ ଖୋଜୁଛି",
+        "static_done": "ଦସ୍ତାବିଜ ଖୋଜ ସମ୍ପୂର୍ଣ୍ଣ",
+        "web_done": "ୱେବ୍ ଖୋଜ ସମ୍ପୂର୍ଣ୍ଣ",
+        "evidence_merge": "ପ୍ରମାଣ ମିଶାଉଛି",
+        "llm_generate": "ଉତ୍ତର ତିଆରି କରୁଛି",
+        "citation_verify": "ହୱାଲା ଯାଞ୍ଚ କରୁଛି",
+    },
+    "ml": {
+        "retrieval_start": "ഉറവിടങ്ങൾ തിരയുന്നു",
+        "static_done": "രേഖ തേടൽ പൂർത്തിയായി",
+        "web_done": "വെബ് തേടൽ പൂർത്തിയായി",
+        "evidence_merge": "തെളിവുകൾ ലയിപ്പിക്കുന്നു",
+        "llm_generate": "ഉത്തരം തയ്യാറാക്കുന്നു",
+        "citation_verify": "ഉദ്ധരണികൾ പരിശോധിക്കുന്നു",
+    },
+}
+
+
+def _make_step_emitter():
+    """Return a sync callback and an async generator for real-time step events.
+
+    The callback is thread-safe (uses queue.Queue) so it can be called from
+    inside orchestrator.run(). The async generator yields step dicts as they
+    arrive, with a short timeout to avoid blocking.
+    """
+    q: queue.Queue[dict | None] = queue.Queue()
+
+    def _collect(step_data: dict) -> None:
+        q.put(step_data)
+
+    async def _drain():
+        while True:
+            try:
+                item = q.get(timeout=0.1)
+                if item is None:
+                    break
+                yield item
+            except queue.Empty:
+                continue
+
+    return _collect, _drain()
 
 
 def _sse_event(event: str, data: dict | str) -> str:
@@ -1043,7 +1201,7 @@ def _sse_event(event: str, data: dict | str) -> str:
 
 
 @router.post("/chat/stream")
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, user_id: str = Depends(require_auth)):
     """Streaming version — delegates to orchestrator, emits SSE events."""
 
     async def generate():
@@ -1221,8 +1379,6 @@ async def chat_stream(req: ChatRequest):
                 return
 
             # ── Core RAG via orchestrator ────────────────────────────────
-            yield _sse_event("thinking", {"text": thinking_msgs[1]})
-
             orchestrator = _get_rag_orchestrator(ctx.settings)
             rag_response = await orchestrator.run(
                 query=req.question,
@@ -1235,18 +1391,26 @@ async def chat_stream(req: ChatRequest):
                 lang=ctx.lang,
                 session_id=req.session_id,
                 language_mix=ctx.language_mix,
+                pipeline_mode=req.mode,
             )
 
-            # Sarvam generates directly in user's language; only translate for Groq fallback
-            if rag_response.mode == "groq_fallback" and ctx.lang != "en":
+            # Keep the final language conversion at one explicit response boundary.
+            if ctx.lang != "en" and rag_response.answer and rag_response.answer.strip():
                 rag_response.answer = _translate_from_english(rag_response.answer, ctx.lang, ctx.settings)
                 rag_response.speech_text = prepare_speech_text(rag_response.answer)
                 rag_response.speech_segments = segment_speech(rag_response.answer, ctx.lang)
 
-            # Emit thinking + tokens
-            yield _sse_event("thinking", {"text": thinking_msgs[2]})
-            for token in rag_response.answer.split(" "):
-                yield _sse_event("token", {"text": token + " "})
+            if not rag_response.answer or not rag_response.answer.strip():
+                rag_response.answer = get_abstain_text(ctx.lang)
+                rag_response.abstained = True
+                rag_response.confidence = 0.0
+                rag_response.citations = []
+
+            # Emit tokens
+            words = rag_response.answer.split(" ")
+            for i, token in enumerate(words):
+                suffix = " " if i < len(words) - 1 else ""
+                yield _sse_event("token", {"text": token + suffix})
 
             # Session persistence
             save_message(req.session_id, "user", req.question)

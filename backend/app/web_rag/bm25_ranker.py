@@ -27,6 +27,14 @@ def tokenize(text: str) -> list[str]:
 
 class WebBM25Ranker:
 
+    def rank_candidates(
+        self,
+        query: str,
+        candidates: list[dict],
+        top_k: int = 12,
+    ) -> list[dict]:
+        return self.rank(query=query, results=candidates, top_k=top_k)
+
     def rank(
         self,
         query: str,

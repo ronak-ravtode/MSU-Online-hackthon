@@ -16,7 +16,7 @@ and provides a prototype grievance intake workflow.
 
 1. Provide trustworthy, cited information about: cooperative law/by-laws, PACS,
    Ministry of Cooperation schemes, PMFBY, financial literacy.
-2. Support 6 languages: English, Hindi, Gujarati, Marathi, Bengali, Tamil (text + voice I/O).
+2. Support 11 languages: English, Hindi, Gujarati, Marathi, Bengali, Tamil, Telugu, Kannada, Punjabi, Odia, Malayalam (text + voice I/O).
 3. Provide 9-stage grievance intake → entity extraction → follow-up → prototype reference → status lookup.
 4. Deploy entirely in the cloud, no personal GPU, zero monetary cost for the demo.
 
@@ -34,13 +34,13 @@ authentication, analytics dashboard, real government grievance submission
 ## Target users
 
 Cooperative members, farmers, and rural stakeholders seeking official guidance
-in English, Hindi, Gujarati, Marathi, Bengali, or Tamil.
+in English, Hindi, Gujarati, Marathi, Bengali, Tamil, Telugu, Kannada, Punjabi, Odia, or Malayalam.
 
 ---
 
 ## Core requirements (all implemented)
 
-1. Multilingual text chat (EN, HI, GU, MR, BN, TA).
+1. Multilingual text chat (EN, HI, GU, MR, BN, TA, TE, KN, PA, OR, ML).
 2. Central cooperative info + PACS info + Gujarat state rules. Mandatory metadata
    on every legal/cooperative answer: `jurisdiction, state, effective_date, verified_date`.
 3. PMFBY: FAQ, eligibility guidance, process guidance.
@@ -60,10 +60,10 @@ in English, Hindi, Gujarati, Marathi, Bengali, or Tamil.
 ```
 POST /chat
   Body: { question, session_id, language, ui_language_explicit?, state?, as_of_date?, history? }
-  language: "en" | "hi" | "gu" | "mr" | "bn" | "ta"
+  language: "en" | "hi" | "gu" | "mr" | "bn" | "ta" | "te" | "kn" | "pa" | "or" | "ml"
 
 POST /chat/stream
-  Same body; returns SSE events: thinking | token | metadata | done
+  Same body; returns SSE events: thinking | step | token | metadata | done
 
 POST /voice
   Multipart: audio (file), language (form), session_id (form), state? (form)
@@ -75,8 +75,16 @@ POST /voice/speak
   Body: { text, language, segments? }
 
 POST /grievance
+POST /grievances/answer
+POST /grievances/finalize
+POST /grievances/clarify
+POST /grievances/fields
+POST /translate
+POST /webhooks/clerk
 GET  /conversations/{session_id}
+GET  /conversations/{id}/pin
 GET  /evidence/{...}
+GET  /documents/pdf/{filename}
 GET  /health
 GET  /health/providers
 ```
@@ -129,8 +137,8 @@ and inactivity pauses — the architecture tolerates all three.
 
 ## Definition of done
 
-✅ **Achieved.** Deployed PWA where text questions in 6 languages flow through
+✅ **Achieved.** Deployed PWA where text questions in 11 languages flow through
 domain routing → hybrid RAG (static pgvector + web) → grounded, cited answers,
 with correct abstention on unsupported questions, and grievances can be created
 with multi-turn intake + status lookup guidance. Voice (STT/TTS) working via
-Sarvam AI.
+Sarvam AI. Clerk authentication (optional) for user identity.

@@ -10,28 +10,23 @@ import { Badge } from "@/components/ui/Badge";
 import {
   IconSpeaker,
   IconDoc,
+  IconGlobe,
   IconChevronRight,
   IconCopy,
   IconCheck,
   IconThumbsUp,
   IconThumbsDown,
+  IconBot,
 } from "@/components/ui/Icons";
 import { deco } from "@/lib/data/deco";
 import { createSpeechService, speakSegments } from "@/lib/speech";
 import { EvidenceBand } from "@/components/EvidenceBand";
 import { evidenceBand } from "@/lib/band";
-import { GrievanceCard } from "./GrievanceCard";
-import { GrievanceFlow } from "./GrievanceFlow";
 
 type Citation = ChatResponse["citations"][number];
 
-// ── Citation chunk-tag pattern ────────────────────────────────────────────────
 const CHUNK_TAG_RE = /\[chunk:([^\]]+)\]/gi;
 
-/**
- * Split answer text into alternating text / citation-tag segments.
- * Returns [{ type: "text", value }, { type: "cite", id, raw }]
- */
 function parseAnswerSegments(
   answer: string,
 ): Array<{ type: "text"; value: string } | { type: "cite"; id: string; raw: string }> {
@@ -50,10 +45,6 @@ function parseAnswerSegments(
   return segments;
 }
 
-/**
- * Build a chunk_id → citation lookup.  Uses exact match first, then
- * prefix match (for the 8-char short IDs the backend returns).
- */
 function buildCitationMap(citations: Citation[]): Map<string, Citation> {
   const map = new Map<string, Citation>();
   for (const c of citations) {
@@ -66,17 +57,14 @@ function resolveCitation(
   id: string,
   citationMap: Map<string, Citation>,
 ): Citation | undefined {
-  // 1. Exact match (the common case — backend returns 8-char short_id)
   const exact = citationMap.get(id);
   if (exact) return exact;
-  // 2. Prefix match — the tag id may be longer or shorter than the stored key
   for (const [key, cit] of citationMap) {
     if (key.startsWith(id) || id.startsWith(key)) return cit;
   }
   return undefined;
 }
 
-// ── Evidence Card (individual expandable evidence within the panel) ────────────
 function EvidenceCard({
   citation,
   isHighlighted,
@@ -114,51 +102,39 @@ function EvidenceCard({
         aria-expanded={isExpanded}
         className="flex w-full items-start gap-3 p-3 text-left"
       >
-        {/* Document icon */}
         <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded ${
-          isWeb ? "bg-[var(--accent-legal)]/10 text-[var(--accent-legal)]" : "bg-[var(--accent-agriculture)]/10 text-[var(--accent-agriculture)]"
+          isWeb ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-700"
         }`}>
-          <IconDoc className="h-3.5 w-3.5" />
+          {isWeb ? <IconGlobe className="h-3.5 w-3.5" /> : <IconDoc className="h-3.5 w-3.5" />}
         </div>
-
         <div className="min-w-0 flex-1 space-y-1">
-          {/* Source type label */}
           <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">
             {isWeb ? t("chat.viewSource") : t("chat.viewDocument")}
           </p>
-
-          {/* Document title */}
           <p className="text-sm font-semibold leading-snug text-[var(--ink)] line-clamp-2">
             {citation.title}
           </p>
-
-          {/* Metadata row: page · section */}
           {(citation.page || citation.section) && (
             <p className="text-xs text-[var(--text-tertiary)]">
               {citation.page && <span>Page {citation.page}</span>}
-              {citation.page && citation.section && <span className="mx-1.5">·</span>}
+              {citation.page && citation.section && <span className="mx-1.5">&middot;</span>}
               {citation.section && <span>Section {citation.section}</span>}
             </p>
           )}
         </div>
-
         <IconChevronRight
           className={`mt-1 h-4 w-4 shrink-0 text-[var(--text-faint)] transition-transform duration-200 ${
             isExpanded ? "rotate-90" : ""
           }`}
         />
       </button>
-
       {isExpanded && (
         <div className="px-3 pb-3 space-y-2.5">
-          {/* Excerpt */}
           {citation.content && (
             <div className="rounded-[var(--radius-sm)] border border-[var(--border-soft)] bg-[var(--cream)] p-3 text-xs leading-relaxed text-[var(--ink)] whitespace-pre-wrap max-h-64 overflow-y-auto">
               {citation.content}
             </div>
           )}
-
-          {/* View action */}
           <div className="flex items-center gap-3">
             {isWeb && citation.url && (
               <a
@@ -168,7 +144,7 @@ function EvidenceCard({
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-legal)] transition-colors hover:text-[var(--accent-primary)]"
               >
                 {t("chat.viewSource")}
-                <span className="text-[10px]">↗</span>
+                <span className="text-[10px]">&#8599;</span>
               </a>
             )}
             {!isWeb && citation.source_file && (
@@ -179,18 +155,7 @@ function EvidenceCard({
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-legal)] transition-colors hover:text-[var(--accent-primary)]"
               >
                 {t("chat.viewDocument")}
-                <span className="text-[10px]">↗</span>
-              </a>
-            )}
-            {!isWeb && !citation.source_file && citation.url && (
-              <a
-                href={citation.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-legal)] transition-colors hover:text-[var(--accent-primary)]"
-              >
-                {t("chat.viewDocument")}
-                <span className="text-[10px]">↗</span>
+                <span className="text-[10px]">&#8599;</span>
               </a>
             )}
           </div>
@@ -200,7 +165,6 @@ function EvidenceCard({
   );
 }
 
-// ── Evidence Panel (unified panel showing all citations) ──────────────────────
 function EvidencePanel({
   citations,
   expandedChunkId,
@@ -218,7 +182,6 @@ function EvidencePanel({
       data-evidence="true"
       className="mt-3 rounded-[var(--radius-md)] border border-[var(--border-soft)] bg-[var(--surface-elevated)] overflow-hidden"
     >
-      {/* Panel header */}
       <div className="flex items-center justify-between border-b border-[var(--border-soft)] bg-[var(--cream)] px-4 py-2.5">
         <div className="flex items-center gap-2">
           <IconDoc className="h-4 w-4 text-[var(--accent-legal)]" />
@@ -235,11 +198,9 @@ function EvidencePanel({
           className="text-[var(--text-tertiary)] hover:text-[var(--ink)] text-xs transition-colors rounded-[var(--radius-sm)] px-1.5 py-0.5 hover:bg-[var(--cream-2)]"
           aria-label="Close evidence panel"
         >
-          ✕
+          &#10005;
         </button>
       </div>
-
-      {/* Source cards */}
       <div className="p-2.5 space-y-2">
         {citations.map((c, i) => (
           <EvidenceCard
@@ -255,7 +216,6 @@ function EvidencePanel({
   );
 }
 
-// ── Clickable Citation Tag ────────────────────────────────────────────────────
 function CitationTag({
   id,
   citationMap,
@@ -269,7 +229,6 @@ function CitationTag({
 }) {
   const citation = resolveCitation(id, citationMap);
   if (!citation) {
-    // Unknown ID — render as inert text
     return (
       <span
         className="inline-flex items-center rounded bg-[var(--cream)] px-1 py-0.5 text-[10px] font-mono text-[var(--text-faint)] border border-[var(--border-soft)]"
@@ -289,18 +248,17 @@ function CitationTag({
         aria-label={`Evidence for citation ${id}`}
         className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold transition-all ${
           citation.source === "web"
-            ? "bg-[var(--accent-legal)]/8 text-[var(--accent-legal)] hover:bg-[var(--accent-legal)]/15"
-            : "bg-[var(--accent-agriculture)]/8 text-[var(--accent-agriculture)] hover:bg-[var(--accent-agriculture)]/15"
+            ? "bg-blue-50 text-blue-600 hover:bg-blue-100"
+            : "bg-amber-50 text-amber-700 hover:bg-amber-100"
         } ${isExpanded ? "ring-1 ring-current shadow-[var(--shadow-sm)]" : ""}`}
       >
-        <IconDoc className="h-2.5 w-2.5" />
+        {citation.source === "web" ? <IconGlobe className="h-2.5 w-2.5" /> : <IconDoc className="h-2.5 w-2.5" />}
         {id}
       </button>
     </span>
   );
 }
 
-// ── MessageBubble ─────────────────────────────────────────────────────────────
 export function cleanMarkdownForDisplay(text: string): string {
   if (!text) return "";
   let cleaned = text;
@@ -312,12 +270,37 @@ export function cleanMarkdownForDisplay(text: string): string {
   // Fix escaped asterisks (\*\* -> **)
   cleaned = cleaned.replace(/\\\*/g, "*");
 
+  // Strip pipe characters (LLM uses pipes as separators, not real tables)
+  cleaned = cleaned.replace(/\|/g, " ");
+
+  // Remove table separator patterns like "--- ----" or "|---|---|" remnants
+  cleaned = cleaned.replace(/[\s]*-{3,}[\s-]*/g, " ");
+
+  // Fix missing spaces after punctuation
+  cleaned = cleaned.replace(/\.([^\s\n])/g, ". $1");
+  cleaned = cleaned.replace(/,([^\s\n])/g, ", $1");
+  cleaned = cleaned.replace(/;([^\s\n])/g, "; $1");
+  cleaned = cleaned.replace(/:([^\s\n])/g, ": $1");
+
+  // Add line break after bold headings (**Heading**)
+  cleaned = cleaned.replace(/(\*\*[^*]+\*\*)\s*/g, "$1\n\n");
+
+  // Add line break after standalone colons used as separators
+  cleaned = cleaned.replace(/\n:\s*/g, "\n\n");
+
+  // Ensure English numbered list items get line breaks
+  cleaned = cleaned.replace(/([^\n])\s*(\d+\.)\s+/g, "$1\n$2 ");
+  cleaned = cleaned.replace(/([^\n])(\d+\.)/g, "$1\n$2");
+
+  // Ensure Gujarati numbered list items get line breaks (૧. ૨. ૩. etc.)
+  cleaned = cleaned.replace(/([^\n])\s*([૦-૯]+\.)/g, "$1\n$2");
+
   // Format bullet points: replace inline bullets (•) with newlines and markdown dash (- )
   cleaned = cleaned.replace(/([^\n])\s*•\s*/g, "$1\n- ");
   cleaned = cleaned.replace(/^\s*•\s*/gm, "- ");
 
-  // Ensure numbered list items on inline text get proper linebreaks
-  cleaned = cleaned.replace(/([^\n])\s*(\d+\.)\s+/g, "$1\n$2 ");
+  // Collapse multiple spaces into one
+  cleaned = cleaned.replace(/ {2,}/g, " ");
 
   // Preserve double newlines for paragraph breaks, remove excess newlines
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
@@ -336,6 +319,10 @@ export function cleanTextForSpeech(text: string): string {
   // Remove markdown headers
   cleaned = cleaned.replace(/^#+\s+/gm, "");
 
+  // Strip pipe characters and table separator remnants
+  cleaned = cleaned.replace(/\|/g, " ");
+  cleaned = cleaned.replace(/[\s]*-{3,}[\s-]*/g, " ");
+
   // Convert bullet points to sentence endings
   cleaned = cleaned.replace(/^[\s]*[-*+•]\s+/gm, ". ");
   cleaned = cleaned.replace(/([^\n])\s*•\s*/g, "$1. ");
@@ -351,12 +338,12 @@ export function cleanTextForSpeech(text: string): string {
 
   // Normalize duplicate spaces and periods
   cleaned = cleaned.replace(/\.\s*\./g, ".");
-  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  cleaned = cleaned.replace(/ {2,}/g, " ").trim();
 
   return cleaned;
 }
 
-export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrievanceFinalized, isActive = false }: { resp: ChatResponse; isStreaming?: boolean; onSendMessage?: (message: string) => void; onGrievanceFinalized?: (finalizedResponse: ChatResponse) => void; isActive?: boolean }) {
+export function MessageBubble({ resp, isStreaming = false }: { resp: ChatResponse; isStreaming?: boolean }) {
   const { t } = useI18n();
   const speech = useMemo(() => createSpeechService(), []);
   const [speaking, setSpeaking] = useState(false);
@@ -370,38 +357,8 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
   const domainKey = `domain.${resp.domain}`;
   const domainLabel = t(domainKey).startsWith("domain.") ? resp.domain : t(domainKey);
 
-  // Build citation lookup map (memoised per response)
   const citationMap = useMemo(() => buildCitationMap(resp.citations), [resp.citations]);
-
-  // Parse answer into text + citation segments
-  const answerSegments = useMemo(
-    () => parseAnswerSegments(resp.answer),
-    [resp.answer],
-  );
-
-  // The `grievance` object is attached from the very first turn of the
-  // workflow (classification confirmation onward) and fills in
-  // progressively — it is NOT itself a signal that the draft is done.
-  // `grievance.submission` is only populated once a submission route has
-  // been resolved, which happens exactly on the turn that completes the
-  // draft. That's the single authoritative moment to show ONE structured
-  // GrievanceCard instead of the normal follow-up-question prose — using
-  // mere `grievance` presence here would suppress the actual follow-up
-  // questions ("What is your ward number?") on every earlier turn.
-  const isGrievanceComplete =
-    resp.mode === "grievance" && !!resp.grievance && !!resp.grievance.submission;
-
-  // Check if we have structured grievance data for the new UI flow.
-  // The LATEST (active) grievance-stage message renders the live,
-  // interactive wizard. Any earlier grievance-stage message renders the
-  // SAME structured table/panel UI, but permanently read-only -- it must
-  // stay visible as a table, not collapse into plain-text prose (the old
-  // free-text grievance output has been removed entirely).
-  const hasStructuredGrievance =
-    resp.mode === "grievance" &&
-    !!resp.grievance_stage &&
-    resp.grievance_stage !== "complete" &&
-    !!onSendMessage;
+  const answerSegments = useMemo(() => parseAnswerSegments(resp.answer), [resp.answer]);
 
   async function handleSpeak() {
     if (speaking) {
@@ -429,7 +386,7 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
     setTimeout(() => setCopied(false), 2000);
   }
 
-  if (resp.abstained) {
+  if (resp.abstained || !resp.answer || !resp.answer.trim()) {
     return (
       <div className="group flex gap-3 text-sm sm:text-base leading-relaxed text-[var(--ink)]">
         <div className="min-w-0 flex-1 space-y-2">
@@ -457,12 +414,12 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
             <Badge deco={deco(resp.domain)}>{domainLabel}</Badge>
             {resp.mode && (
               <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-semibold ${
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium ${
                   resp.mode === "web"
-                    ? "bg-[var(--accent-legal)]/10 text-[var(--accent-legal)]"
+                    ? "bg-blue-100 text-blue-800"
                     : resp.mode === "grievance"
-                      ? "bg-[var(--accent-grievance)]/10 text-[var(--accent-grievance)]"
-                      : "bg-[var(--cream)] text-[var(--text-tertiary)]"
+                      ? "bg-orange-100 text-orange-800"
+                      : "bg-gray-100 text-gray-600"
                 }`}
               >
                 {resp.mode === "web" ? t("chat.mode.webSearch") : resp.mode === "grievance" ? t("chat.mode.grievance") : t("chat.mode.staticRag")}
@@ -470,75 +427,55 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
             )}
             <EvidenceBand confidence={resp.confidence} label={t(`evidence.${evidenceBand(resp.confidence)}`)} />
           </div>
-          <span className="text-[11px] sm:text-xs text-[var(--text-faint)]">{(resp.confidence * 100).toFixed(0)}% match</span>
+          <span className="text-[11px] sm:text-xs text-[var(--muted-soft)]">{(resp.confidence * 100).toFixed(0)}% match</span>
         </div>
 
-        {/* Structured grievance object present -> this turn IS the
-            grievance-complete event. Show one short localized
-            confirmation instead of the full prose draft, then the
-            single authoritative GrievanceCard below. `resp.answer`
-            still holds the full text (used for copy/speech) but is
-            not duplicated visually here — see Task 1 in the grievance
-            productization notes: the frontend must render ONE
-            authoritative grievance experience, never the full-text
-            draft followed by the same draft again in the card. */}
-        {isGrievanceComplete ? (
-          <p className="font-answer text-sm sm:text-base leading-relaxed text-[var(--ink)]">
-            {t("grievanceCard.confirmation")}
-          </p>
-        ) : hasStructuredGrievance ? (
-          /* Structured grievance flow - render interactive UI */
-          <GrievanceFlow response={resp} onSendMessage={onSendMessage!} onGrievanceFinalized={onGrievanceFinalized} readOnly={!isActive} />
-        ) : (
-          /* Answer Content — with inline citation tags */
-          <div className={`font-answer text-sm sm:text-base leading-relaxed text-[var(--ink)] prose prose-sm max-w-none prose-headings:font-semibold prose-headings:text-[var(--ink)] prose-p:my-2 prose-p:leading-relaxed prose-ul:my-2.5 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-2.5 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1 prose-strong:font-semibold prose-strong:text-[var(--ink)] prose-table:text-xs prose-th:font-semibold prose-td:py-1 prose-th:py-1 prose-pre:bg-[var(--dark)] prose-pre:text-[var(--on-dark-strong)] prose-code:text-[var(--accent-primary)] ${isStreaming ? "streaming-text" : ""}`}>
-            {answerSegments.map((seg, i) => {
-              if (seg.type === "text") {
-                return (
-                  <Markdown
-                    key={i}
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      p: ({ children }) => <p className="mb-2.5 leading-relaxed text-[var(--ink)]">{children}</p>,
-                      ul: ({ children }) => <ul className="my-2.5 list-disc pl-5 space-y-1 text-[var(--ink)]">{children}</ul>,
-                      ol: ({ children }) => <ol className="my-2.5 list-decimal pl-5 space-y-1 text-[var(--ink)]">{children}</ol>,
-                      li: ({ children }) => <li className="pl-1 leading-relaxed">{children}</li>,
-                      strong: ({ children }) => <strong className="font-semibold text-[var(--ink)]">{children}</strong>,
-                      h1: ({ children }) => <h1 className="text-lg font-bold my-2 text-[var(--ink)]">{children}</h1>,
-                      h2: ({ children }) => <h2 className="text-base font-bold my-2 text-[var(--ink)]">{children}</h2>,
-                      h3: ({ children }) => <h3 className="text-sm font-semibold my-1.5 text-[var(--ink)]">{children}</h3>,
-                    }}
-                  >
-                    {cleanMarkdownForDisplay(seg.value)}
-                  </Markdown>
-                );
-              }
-              // Citation tag — clickable
+        {/* Answer Content */}
+        <div className={`font-answer text-sm sm:text-base leading-relaxed text-[var(--ink)] prose prose-sm max-w-none prose-headings:font-semibold prose-headings:text-[var(--ink)] prose-p:my-2 prose-p:leading-relaxed prose-ul:my-2.5 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-2.5 prose-ol:list-decimal prose-ol:pl-5 prose-li:my-1 prose-strong:font-semibold prose-strong:text-[var(--ink)] prose-table:text-xs prose-th:font-semibold prose-td:py-1 prose-th:py-1 prose-pre:bg-[var(--primary)] prose-pre:text-[var(--on-primary)] prose-code:text-[var(--ink)] ${isStreaming ? "streaming-text" : ""}`}>
+          {answerSegments.map((seg, i) => {
+            if (seg.type === "text") {
               return (
-                <span key={i} className="inline-block align-middle mx-0.5">
-                  <CitationTag
-                    id={seg.id}
-                    citationMap={citationMap}
-                    isExpanded={expandedChunkId === seg.id}
-                    onToggle={() => {
-                      setEvidencePanelOpen(true);
-                      setExpandedChunkId((prev) => (prev === seg.id ? null : seg.id));
-                    }}
-                  />
-                </span>
+                <Markdown
+                  key={i}
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: ({ children }) => <p className="mb-2.5 leading-relaxed text-[var(--ink)]">{children}</p>,
+                    ul: ({ children }) => <ul className="my-2.5 list-disc pl-5 space-y-1 text-[var(--ink)]">{children}</ul>,
+                    ol: ({ children }) => <ol className="my-2.5 list-decimal pl-5 space-y-1 text-[var(--ink)]">{children}</ol>,
+                    li: ({ children }) => <li className="pl-1 leading-relaxed">{children}</li>,
+                    strong: ({ children }) => <strong className="font-semibold text-[var(--ink)]">{children}</strong>,
+                    h1: ({ children }) => <h1 className="text-lg font-bold my-2 text-[var(--ink)]">{children}</h1>,
+                    h2: ({ children }) => <h2 className="mt-5 mb-2 border-b border-[var(--border-soft)] pb-1.5 text-base font-bold text-[var(--ink)]">{children}</h2>,
+                    h3: ({ children }) => <h3 className="mt-4 mb-1.5 text-sm font-semibold text-[var(--accent-legal)]">{children}</h3>,
+                    blockquote: ({ children }) => <blockquote className="my-3 border-l-2 border-[var(--accent-legal)]/40 pl-3 italic text-[var(--text-tertiary)]">{children}</blockquote>,
+                    table: ({ children }) => <div className="my-3 overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border-soft)]"><table className="w-full min-w-[420px] border-collapse text-left text-xs">{children}</table></div>,
+                    thead: ({ children }) => <thead className="bg-[var(--cream)] text-[var(--ink)]">{children}</thead>,
+                    th: ({ children }) => <th className="border-b border-[var(--border-soft)] px-3 py-2 font-semibold">{children}</th>,
+                    td: ({ children }) => <td className="border-b border-[var(--border-soft)] px-3 py-2 align-top leading-relaxed last:border-b-0">{children}</td>,
+                    hr: () => <hr className="my-4 border-[var(--border-soft)]" />,
+                    a: ({ children, href }) => <a href={href} className="font-medium text-[var(--accent-legal)] underline decoration-[var(--accent-legal)]/30 underline-offset-2 hover:decoration-current" target="_blank" rel="noreferrer">{children}</a>,
+                  }}
+                >
+                  {cleanMarkdownForDisplay(seg.value)}
+                </Markdown>
               );
-            })}
-          </div>
-        )}
+            }
+            return (
+              <span key={i} className="inline-block align-middle mx-0.5">
+                <CitationTag
+                  id={seg.id}
+                  citationMap={citationMap}
+                  isExpanded={expandedChunkId === seg.id}
+                  onToggle={() => {
+                    setEvidencePanelOpen(true);
+                    setExpandedChunkId((prev) => (prev === seg.id ? null : seg.id));
+                  }}
+                />
+              </span>
+            );
+          })}
+        </div>
 
-        {/* Structured grievance summary — reads only the canonical
-            `grievance` object, never the prose answer, so it renders
-            identically regardless of the user's language. */}
-        {isGrievanceComplete && (
-          <GrievanceCard grievance={resp.grievance!} />
-        )}
-
-        {/* Grounded indicator — when citations exist */}
         {resp.citations.length > 0 && !evidencePanelOpen && (
           <div className="flex items-center gap-2 py-1">
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[var(--accent-legal)]/10">
@@ -552,7 +489,6 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
           </div>
         )}
 
-        {/* Unified Evidence Panel */}
         {evidencePanelOpen && resp.citations.length > 0 && (
           <EvidencePanel
             citations={resp.citations}
@@ -566,13 +502,12 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
             }}
           />
         )}
-
         {isStreaming && (
           <style jsx>{`
             .streaming-text :global(p:last-child)::after {
               content: "▊";
               animation: blink 0.8s step-end infinite;
-              color: var(--accent-primary);
+              color: var(--ink);
               font-weight: normal;
             }
             @keyframes blink {
@@ -587,23 +522,23 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
             <Link href="/schemes">
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 rounded-[var(--radius-cta)] border border-[var(--accent-primary)]/40 bg-[var(--cream)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition-colors hover:border-[var(--accent-primary)] hover:bg-[var(--cream-2)]"
+                className="inline-flex items-center gap-1.5 rounded-[var(--radius-cta)] border border-[var(--ink)]/40 bg-[var(--surface-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition-colors hover:border-[var(--ink)] hover:bg-[var(--surface-card)]"
               >
                 {t("chat.exploreSchemes")}
-                <IconChevronRight className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
+                <IconChevronRight className="h-3.5 w-3.5 text-[var(--ink)]" />
               </button>
             </Link>
           </div>
         )}
 
         {/* Actions Footer */}
-        <div className="pt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-faint)]">
+        <div className="pt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--muted-soft)]">
           {/* Copy Button */}
           <button
             type="button"
             onClick={handleCopy}
             title={copied ? t("chat.copied") : t("chat.copyResponse")}
-            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--cream-2)] hover:text-[var(--ink)]"
+            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-card)] hover:text-[var(--ink)]"
           >
             {copied ? <IconCheck className="h-3.5 w-3.5 text-[var(--state-success)]" /> : <IconCopy className="h-3.5 w-3.5" />}
           </button>
@@ -613,8 +548,8 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
             type="button"
             onClick={handleSpeak}
             title={speaking ? t("common.stopReadAloud") : t("common.readAloud")}
-            className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] transition-colors hover:bg-[var(--cream-2)] hover:text-[var(--ink)] ${
-              speaking ? "text-[var(--accent-primary)] bg-[var(--accent-tint-soft)]" : "text-[var(--text-tertiary)]"
+            className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] transition-colors hover:bg-[var(--surface-card)] hover:text-[var(--ink)] ${
+              speaking ? "text-[var(--ink)] bg-[var(--accent-tint-soft)]" : "text-[var(--muted)]"
             }`}
           >
             <IconSpeaker className={`h-3.5 w-3.5 ${speaking ? "animate-pulse" : ""}`} />
@@ -625,8 +560,8 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
             type="button"
             onClick={() => setRating((r) => (r === "up" ? null : "up"))}
             title={t("chat.goodResponse")}
-            className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] transition-colors hover:bg-[var(--cream-2)] hover:text-[var(--ink)] ${
-              rating === "up" ? "text-[var(--state-success)] bg-[var(--cream-2)]" : "text-[var(--text-tertiary)]"
+            className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] transition-colors hover:bg-[var(--surface-card)] hover:text-[var(--ink)] ${
+              rating === "up" ? "text-[var(--state-success)] bg-[var(--surface-card)]" : "text-[var(--muted)]"
             }`}
           >
             <IconThumbsUp className="h-3.5 w-3.5" />
@@ -637,8 +572,8 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
             type="button"
             onClick={() => setRating((r) => (r === "down" ? null : "down"))}
             title={t("chat.badResponse")}
-            className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] transition-colors hover:bg-[var(--cream-2)] hover:text-[var(--ink)] ${
-              rating === "down" ? "text-[var(--state-error)] bg-[var(--cream-2)]" : "text-[var(--text-tertiary)]"
+            className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] transition-colors hover:bg-[var(--surface-card)] hover:text-[var(--ink)] ${
+              rating === "down" ? "text-[var(--state-error)] bg-[var(--surface-card)]" : "text-[var(--muted)]"
             }`}
           >
             <IconThumbsDown className="h-3.5 w-3.5" />
@@ -671,3 +606,4 @@ export function MessageBubble({ resp, isStreaming = false, onSendMessage, onGrie
     </div>
   );
 }
+

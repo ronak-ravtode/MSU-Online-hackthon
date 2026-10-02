@@ -1,0 +1,143 @@
+{
+  "metrics": {
+    "total_cases": 43,
+    "direct_accuracy": 0.6666666666666666,
+    "scenario_accuracy": 0.3333333333333333,
+    "multi_condition_accuracy": 1.0,
+    "multi_document_accuracy": 0,
+    "multilingual_accuracy": 1.0,
+    "evidence_coverage": 1.0,
+    "citation_correctness": 0.0,
+    "unsupported_claim_rate": 0.0,
+    "correct_abstention_rate": 0,
+    "clarification_accuracy": 1.0,
+    "average_latency_ms": 31861.700739179338,
+    "overall_accuracy": 0.5714285714285714
+  },
+  "cases": [
+    {
+      "id": "D01",
+      "category": "direct",
+      "subcategory": "definition",
+      "correct": true,
+      "facts_found": [
+        "Pradhan Mantri Fasal Bima Yojana",
+        "Kharif 2016"
+      ],
+      "facts_missing": [
+        "crop insurance"
+      ],
+      "evidence_coverage": 0.0,
+      "citations": 23,
+      "latency_ms": 20274.553537368774,
+      "failure": ""
+    },
+    {
+      "id": "D06",
+      "category": "direct",
+      "subcategory": "eligibility",
+      "correct": false,
+      "facts_found": [
+        "all farmers"
+      ],
+      "facts_missing": [
+        "sharecropper",
+        "tenant farmer",
+        "notified crop",
+        "notified area"
+      ],
+      "evidence_coverage": 0.0,
+      "citations": 15,
+      "latency_ms": 9837.530136108398,
+      "failure": "ANSWER_GENERATION_ERROR"
+    },
+    {
+      "id": "D10",
+      "category": "direct",
+      "subcategory": "numeric",
+      "correct": true,
+      "facts_found": [
+        "Sum Insured",
+        "Kharif"
+      ],
+      "facts_missing": [
+        "2%",
+        "food grain"
+      ],
+      "evidence_coverage": 0.0,
+      "citations": 21,
+      "latency_ms": 40156.48698806763,
+      "failure": ""
+    },
+    {
+      "id": "S03",
+      "category": "scenario",
+      "subcategory": "multi_condition",
+      "correct": true,
+      "facts_found": [
+        "member",
+        "shares",
+        "crop loan"
+      ],
+      "facts_missing": [
+        "Board of Directors",
+        "loan policy"
+      ],
+      "evidence_coverage": 0.0,
+      "citations": 24,
+      "latency_ms": 15141.3893699646,
+      "failure": ""
+    },
+    {
+      "id": "S08",
+      "category": "scenario",
+      "subcategory": "missing_info",
+      "correct": false,
+      "facts_found": [],
+      "facts_missing": [
+        "membership required",
+        "Board sanction",
+        "loan policy"
+      ],
+      "evidence_coverage": 0.0,
+      "citations": 15,
+      "latency_ms": 12287.498235702515,
+      "failure": "ANSWER_GENERATION_ERROR"
+    },
+    {
+      "id": "M01",
+      "category": "multilingual",
+      "subcategory": "hindi",
+      "correct": true,
+      "facts_found": [
+        "Sum Insured",
+        "Kharif"
+      ],
+      "facts_missing": [
+        "2%"
+      ],
+      "evidence_coverage": 0.0,
+      "citations": 21,
+      "latency_ms": 59903.64933013916,
+      "failure": ""
+    },
+    {
+      "id": "C01",
+      "category": "scenario",
+      "subcategory": "claims",
+      "correct": false,
+      "facts_found": [],
+      "facts_missing": [
+        "prevented sowing",
+        "mid-season",
+        "post-harvest",
+        "localized calamity",
+        "basic cover"
+      ],
+      "evidence_coverage": 0.0,
+      "citations": 21,
+      "latency_ms": 65430.7975769043,
+      "failure": "ANSWER_GENERATION_ERROR"
+    }
+  ]
+}

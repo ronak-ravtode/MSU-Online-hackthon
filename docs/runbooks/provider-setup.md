@@ -33,7 +33,16 @@ Follow this exact order to create all provider accounts and populate `.env`.
    GEMINI_API_KEY=...
    ```
 
-## 4. Sarvam AI (Voice — STT, TTS, Translation)
+## 4. Jina (Primary Embeddings)
+
+1. Go to https://jina.ai
+2. Sign up and obtain API key
+3. Add to `.env`:
+   ```
+   JINA_API_KEY=...
+   ```
+
+## 5. Sarvam AI (Voice — STT, TTS, Translation)
 
 1. Go to https://sarvam.ai
 2. Register and obtain API key
@@ -42,7 +51,36 @@ Follow this exact order to create all provider accounts and populate `.env`.
    SARVAM_API_KEY=...
    ```
 
-## 5. Render (Backend hosting)
+## 6. Tavily (Web Search)
+
+1. Go to https://tavily.com
+2. Sign up and obtain API key
+3. Add to `.env`:
+   ```
+   TAVILY_API_KEY_1=...
+   ```
+
+## 7. Firecrawl (Web Crawl Fallback)
+
+1. Go to https://firecrawl.dev
+2. Sign up and obtain API key
+3. Add to `.env`:
+   ```
+   FIRECRAWL_API_KEY=...
+   ```
+
+## 8. Clerk (Authentication — Optional)
+
+1. Go to https://clerk.com
+2. Create a new application
+3. Copy Publishable Key and Secret Key into `.env`:
+   ```
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
+   CLERK_SECRET_KEY=sk_...
+   CLERK_WEBHOOK_SECRET=whsec_...
+   ```
+
+## 9. Render (Backend hosting)
 
 1. Go to https://dashboard.render.com
 2. Sign up (used by Task 4)
@@ -54,11 +92,13 @@ After accounts exist, run from repo root with `.env` loaded:
 ```bash
 python scripts/smoke_groq.py
 python scripts/smoke_gemini_embeddings.py
+python scripts/smoke_jina_embeddings.py
 ```
 
 Expected output:
 - `groq ok: OK`
 - `gemini-embedding-2 ok: 3 inputs -> 3 distinct 768-dim vectors`
+- `jina-embeddings-v3 ok: 3 inputs -> 3 distinct 768-dim vectors`
 
 If the aggregation assertion in the Gemini script fails: **STOP**. Revert embedding model to `gemini-embedding-001` per DECISIONS.md guard, re-log, adjust `config.py` (Task 3) to add manual L2 normalization.
 

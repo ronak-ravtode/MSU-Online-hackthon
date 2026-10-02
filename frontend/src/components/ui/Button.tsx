@@ -12,14 +12,14 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const STYLES: Record<Variant, string> = {
   primary:
-    "bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--accent-primary)] hover:bg-[var(--accent-hover)] hover:border-[var(--accent-hover)] active:bg-[var(--accent-active)] shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]",
+    "bg-[var(--primary)] text-[var(--on-primary)] border border-[var(--primary)] hover:bg-[#1a1a1a] hover:border-[#1a1a1a] active:bg-[var(--primary)] active:ring-2 active:ring-[var(--primary)] active:ring-offset-2",
   secondary:
-    "bg-[var(--surface-elevated)] text-[var(--ink)] border border-[var(--border-default)] hover:bg-[var(--cream)] hover:border-[var(--border-hover)] active:bg-[var(--cream-2)]",
+    "bg-[var(--canvas)] text-[var(--ink)] border border-[var(--hairline)] hover:bg-[var(--cream)] hover:border-[var(--border-hover)] active:bg-[var(--primary)] active:text-[var(--on-primary)] active:border-[var(--primary)]",
   dark:
-    "bg-[var(--dark)] text-[var(--on-dark-strong)] border border-[var(--dark)] hover:bg-[#2a2d28] active:bg-[#1a1d18] shadow-[var(--shadow-sm)]",
+    "bg-[var(--surface-dark)] text-[var(--on-primary)] border border-[var(--surface-dark)] hover:bg-[var(--surface-dark-elevated)]",
   ghost:
-    "bg-transparent text-[var(--ink)] border border-transparent hover:bg-[var(--cream)] hover:text-[var(--dark)] active:bg-[var(--cream-2)]",
-  icon: "bg-transparent text-[var(--ink)] border border-transparent hover:bg-[var(--cream)] hover:text-[var(--dark)] active:bg-[var(--cream-2)]",
+    "bg-transparent text-[var(--ink)] border border-transparent hover:bg-[var(--cream)] active:bg-[var(--cream-2)]",
+  icon: "bg-transparent text-[var(--ink)] border border-transparent hover:bg-[var(--cream)] active:bg-[var(--cream-2)]",
 };
 
 const SIZE: Record<Size, string> = {
@@ -56,8 +56,8 @@ export function Button({
       {...rest}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={`inline-flex items-center justify-center gap-2 font-semibold transition-all duration-[200ms] ease-[var(--ease-out-cubic)] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed ${
-        square ? `${ICON_SIZE[size]} rounded-[var(--radius-cta)] p-0` : `${SIZE[size]} rounded-[var(--radius-cta)]`
+      className={`inline-flex items-center justify-center gap-2 font-semibold transition-all duration-[250ms] ease-[var(--ease-out-cubic)] active:scale-[0.99] disabled:opacity-45 disabled:cursor-not-allowed ${
+        square ? `${ICON_SIZE[size]} rounded-[var(--radius-md)] p-0` : `${SIZE[size]} rounded-[var(--radius-md)]`
       } ${STYLES[variant]} ${full ? "w-full" : ""} ${className}`}
     >
       {loading ? <Spinner /> : children}

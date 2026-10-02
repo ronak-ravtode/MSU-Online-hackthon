@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 
 /**
  * Server API route /api/speak
@@ -14,6 +15,8 @@ export async function POST(req: Request) {
     return new Response("Missing text", { status: 400 });
   }
 
+  const { getToken } = await auth();
+  const token = await getToken();
   const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
 
   // Try backend first
@@ -23,7 +26,10 @@ export async function POST(req: Request) {
 
     const res = await fetch(`${backendUrl}/voice/speak`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ text, language }),
       signal: controller.signal,
     });

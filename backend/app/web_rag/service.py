@@ -41,6 +41,7 @@ classifier.
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from urllib.parse import urlparse
 
@@ -60,6 +61,8 @@ from app.web_rag.tavily_client import TavilyClient
 from app.web_rag.web_cleaner import (
     WebDocumentCleaner,
 )
+
+logger = logging.getLogger(__name__)
 
 
 OFFICIAL_DOMAINS = [
@@ -963,8 +966,14 @@ class WebDiscoveryService:
                     include_raw_content=include_raw_content,
                 )
 
-            except Exception:
-                # A single provider failing must not break discovery;
+            except Exception as exc:
+                # A single provider failing must not break discovery, but
+                # hide neither the reason nor the affected provider.
+                logger.warning(
+                    "Web discovery provider failed: provider=%s error=%s",
+                    type(provider).__name__,
+                    str(exc)[:300],
+                )
                 continue
 
             items = (

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as api from "../api";
 import { partitionRuns, hasVoice, pickVoice, speakSegments, createSpeechService } from "../speech";
 
@@ -73,6 +73,116 @@ describe("speakSegments", () => {
     expect(spy).toHaveBeenCalledTimes(2);
     expect(spy).toHaveBeenCalledWith([{ text: "Hello world", language: "en" }]);
     expect(spy).toHaveBeenCalledWith([{ text: "नमस्ते", language: "hi" }]);
+  });
+});
+
+describe("listen (Sarvam STT)", () => {
+  const track = { stop: vi.fn() };
+  const streamStub = { getTracks: () => [track] };
+
+  class StubMediaRecorder {
+    static instances: StubMediaRecorder[] = [];
+    state = "inactive";
+    ondataavailable: ((e: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+    onerror: ((e: unknown) => void) | null = null;
+    constructor(_stream: unknown) {
+      StubMediaRecorder.instances.push(this);
+    }
+    start() {
+      this.state = "recording";
+    }
+    stop() {
+      if (this.state === "inactive") return;
+      this.state = "inactive";
+      this.ondataavailable?.({ data: new Blob(["audio-bytes"]) });
+      this.onstop?.();
+    }
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    StubMediaRecorder.instances = [];
+    track.stop.mockClear();
+    vi.stubGlobal("MediaRecorder", StubMediaRecorder);
+    Object.defineProperty(globalThis.navigator, "mediaDevices", {
+      value: { getUserMedia: vi.fn().mockResolvedValue(streamStub) },
+      configurable: true,
+      writable: true,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ text: "hello world", language: "en" }),
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (globalThis.navigator as any).mediaDevices;
+  });
+
+  it("records until stop, then transcribes via /api/voice/transcribe and delivers the text", async () => {
+    const transcripts: string[] = [];
+    const stop = createSpeechService().listen("en", (text) => {
+      transcripts.push(text);
+    });
+
+    await vi.waitFor(() => {
+      expect(StubMediaRecorder.instances.length).toBe(1);
+      expect(StubMediaRecorder.instances[0].state).toBe("recording");
+    });
+
+    stop();
+
+    await vi.waitFor(() => {
+      expect(transcripts).toEqual(["hello world"]);
+    });
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/voice/transcribe");
+  });
+
+  it("stops the microphone tracks after the session ends", async () => {
+    const stop = createSpeechService().listen("en", () => {});
+    await vi.waitFor(() => {
+      expect(StubMediaRecorder.instances.length).toBe(1);
+    });
+    stop();
+
+    await vi.waitFor(() => {
+      expect(track.stop).toHaveBeenCalled();
+    });
+  });
+
+  it("delivers an empty transcript (once) when stopped before recording starts", async () => {
+    const transcripts: string[] = [];
+    const stop = createSpeechService().listen("en", (text) => {
+      transcripts.push(text);
+    });
+    stop();
+    stop(); // second stop must be a no-op
+
+    await vi.waitFor(() => {
+      expect(transcripts).toEqual([""]);
+    });
+  });
+
+  it("supported is true when MediaRecorder and getUserMedia exist", () => {
+    expect(createSpeechService().supported).toBe(true);
+    vi.stubGlobal("MediaRecorder", undefined);
+    expect(createSpeechService().supported).toBe(false);
+  });
+
+  it("returns a noop stop when recording APIs are unavailable", () => {
+    vi.stubGlobal("MediaRecorder", undefined);
+    const stop = createSpeechService().listen("en", () => {
+      throw new Error("onTranscript must not fire without recording APIs");
+    });
+    expect(() => stop()).not.toThrow();
   });
 });
 

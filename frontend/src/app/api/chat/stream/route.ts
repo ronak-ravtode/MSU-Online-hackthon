@@ -1,3 +1,5 @@
+import { auth } from "@clerk/nextjs/server";
+
 /**
  * Server API route /api/chat/stream
  * SSE proxy to the Python RAG backend streaming endpoint.
@@ -14,13 +16,18 @@ export async function POST(req: Request) {
     });
   }
 
+  const { getToken } = await auth();
+  const token = await getToken();
   const backendUrl = process.env.BACKEND_API_URL?.replace(/\/chat$/, "/chat/stream")
     || "http://localhost:8000/chat/stream";
 
   try {
     const backendRes = await fetch(backendUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(body),
     });
 

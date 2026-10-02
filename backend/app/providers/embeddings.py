@@ -5,6 +5,7 @@ from functools import lru_cache
 import httpx
 
 from app.config import EMBED_DIMS, REQUEST_TIMEOUT_S, Settings, get_settings
+from app.key_rotator import KeyRotator
 
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -20,12 +21,20 @@ def _approx_tokens(text: str) -> int:
 
 class JinaEmbeddingProvider:
     def __init__(self, settings: Settings):
-        self._key = settings.jina_api_key
         self._endpoint = "https://api.jina.ai/v1/embeddings"
         self._model = settings.jina_embed_model or getattr(settings, "embedding_model", "jina-embeddings-v3") or "jina-embeddings-v3"
         self._max_attempts = 5
         self._base_delay = 2.0
         self._token_log: deque[tuple[float, int]] = deque()
+        keys = settings.jina_keys
+        self._rotator = KeyRotator(keys, name="jina") if keys else None
+
+    @property
+    def _key(self) -> str:
+        """Return the current active key (for backward compat)."""
+        if self._rotator:
+            return self._rotator.current_key
+        return ""
 
     def _throttle(self, n_tokens: int) -> None:
         """Block until sending `n_tokens` keeps us under the TPM budget."""
@@ -46,28 +55,31 @@ class JinaEmbeddingProvider:
         last_exc: Exception | None = None
         for attempt in range(self._max_attempts):
             try:
-                r = client.post(
-                    self._endpoint,
-                    headers={
-                        "Authorization": f"Bearer {self._key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self._model,
-                        "input": texts,
-                        "dimensions": EMBED_DIMS,
-                        "task": task,
-                        "truncate": True,
-                    },
-                )
-                if r.status_code >= 400:
-                    raise RuntimeError(f"Jina embedding HTTP {r.status_code}: {r.text[:600]}")
-                r.raise_for_status()
-                data = r.json()["data"]
-                # Sort by index to maintain order
-                data.sort(key=lambda x: x["index"])
-                values = [item["embedding"] for item in data]
-                return values
+                def _call_with_key(key: str) -> list[list[float]]:
+                    r = client.post(
+                        self._endpoint,
+                        headers={
+                            "Authorization": f"Bearer {key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self._model,
+                            "input": texts,
+                            "dimensions": EMBED_DIMS,
+                            "task": task,
+                            "truncate": True,
+                        },
+                    )
+                    if r.status_code >= 400:
+                        raise RuntimeError(f"Jina embedding HTTP {r.status_code}: {r.text[:600]}")
+                    r.raise_for_status()
+                    data = r.json()["data"]
+                    data.sort(key=lambda x: x["index"])
+                    return [item["embedding"] for item in data]
+
+                if self._rotator:
+                    return self._rotator.try_keys(_call_with_key)
+                return _call_with_key(self._key)
             except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError) as exc:
                 last_exc = exc
                 if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code not in _RETRYABLE_STATUS:

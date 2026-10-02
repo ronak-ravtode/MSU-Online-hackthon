@@ -1,4 +1,4 @@
-import { fetchVoiceSpeak, type SpeechSegment } from "./api";
+import { fetchVoiceSpeak, fetchVoiceTranscribe, type SpeechSegment } from "./api";
 
 export type { SpeechSegment };
 
@@ -273,54 +273,123 @@ function playBrowser(
   });
 }
 
+const MAX_RECORDING_MS = 28_000;
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function createSpeechService(): SpeechService {
   const isBrowser = typeof window !== "undefined";
-
-  const SpeechRecognition =
-    isBrowser
-      ? (window.SpeechRecognition || window.webkitSpeechRecognition)
-      : undefined;
 
   return {
     get supported() {
       if (!isBrowser) return false;
-
-      const sr =
-        window.SpeechRecognition ||
-        window.webkitSpeechRecognition;
-
-      return Boolean(sr) && Boolean(window.speechSynthesis);
+      return (
+        Boolean(navigator.mediaDevices?.getUserMedia) &&
+        typeof MediaRecorder !== "undefined"
+      );
     },
 
     listen(locale, onTranscript) {
-      if (!SpeechRecognition) return () => {};
+      const lang = locale.split("-")[0];
 
-      const rec = new SpeechRecognition();
+      if (
+        !isBrowser ||
+        !navigator.mediaDevices?.getUserMedia ||
+        typeof MediaRecorder === "undefined"
+      ) {
+        return () => {};
+      }
 
-      rec.lang = locale === "en" ? "en-IN" : locale + "-IN";
-      rec.interimResults = false;
-      rec.maxAlternatives = 1;
+      let recorder: MediaRecorder | null = null;
+      let stream: MediaStream | null = null;
+      let stopRequested = false;
+      let finished = false;
+      let maxTimer: ReturnType<typeof setTimeout> | undefined;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      rec.onresult = (e: any) => {
-        const text = e.results?.[0]?.[0]?.transcript;
-
-        if (text) {
-          onTranscript(text);
+      const cleanup = () => {
+        if (maxTimer !== undefined) {
+          clearTimeout(maxTimer);
+          maxTimer = undefined;
         }
+        stream?.getTracks().forEach((t) => t.stop());
+        stream = null;
       };
 
-      rec.onerror = () => {};
+      const deliver = (text: string) => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        onTranscript(text);
+      };
 
-      rec.start();
-
-      return () => {
+      const transcribe = async (blob: Blob) => {
+        if (blob.size === 0) {
+          deliver("");
+          return;
+        }
         try {
-          rec.stop();
+          const b64 = await blobToBase64(blob);
+          const { text } = await fetchVoiceTranscribe(b64, lang);
+          deliver(text || "");
         } catch {
-          /* noop */
+          deliver("");
         }
       };
+
+      const stopFn = () => {
+        if (stopRequested) return;
+        stopRequested = true;
+        if (!recorder) return;
+        if (recorder.state === "recording") {
+          recorder.stop();
+        } else {
+          deliver("");
+        }
+      };
+
+      navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .then((s) => {
+          if (stopRequested) {
+            s.getTracks().forEach((t) => t.stop());
+            deliver("");
+            return;
+          }
+          stream = s;
+          const chunks: Blob[] = [];
+          const rec = new MediaRecorder(s);
+          recorder = rec;
+
+          rec.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) chunks.push(e.data);
+          };
+          rec.onstop = () => {
+            void transcribe(
+              new Blob(chunks, { type: chunks[0]?.type || "audio/webm" }),
+            );
+          };
+          rec.onerror = () => {
+            deliver("");
+          };
+
+          rec.start();
+          maxTimer = setTimeout(() => stopFn(), MAX_RECORDING_MS);
+        })
+        .catch(() => {
+          deliver("");
+        });
+
+      return stopFn;
     },
 
     async speak(text, locale) {

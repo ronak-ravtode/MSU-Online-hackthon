@@ -31,6 +31,7 @@ _DOMAIN_MAP = {
     "pacs": "pacs_governance",
     "finlit": "financial_inclusion",
     "cooperative": "pacs_governance",
+    "agriculture": "pmfby",  # No agri docs yet — route to closest corpus
 }
 
 
@@ -72,7 +73,7 @@ class StaticRAGService:
             RAGResult with chunks, abstention info, and confidence band.
         """
         retrieval_domain = _DOMAIN_MAP.get(domain, domain)
-        effective_k = k or (25 if self._settings.reranker_enabled else 6)
+        effective_k = k or 25
 
         # Step 1: Hybrid retrieval
         try:
@@ -130,7 +131,7 @@ class StaticRAGService:
             docs_for_rerank = [
                 {"chunk_id": c.chunk_id, "content": c.content} for c in chunks
             ]
-            reranked = reranker.rerank(query, docs_for_rerank, top_n=6)
+            reranked = reranker.rerank(query, docs_for_rerank, top_n=15)
             chunks_by_id = {c.chunk_id: c for c in chunks}
             return [
                 chunks_by_id[r["chunk_id"]]
@@ -193,8 +194,6 @@ class StaticRAGService:
         for candidate in fused[:k]:
             chunk = chunk_map.get(candidate.chunk_id)
             if chunk:
-                if chunk.similarity < 0.20:
-                    chunk.similarity = 0.50
                 result.append(chunk)
 
         return _enrich_chunks(supabase, result or dense_chunks)

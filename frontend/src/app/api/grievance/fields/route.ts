@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 
 /**
  * Server API route /api/grievance/fields
@@ -13,11 +14,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "conversation_id is required" }, { status: 400 });
   }
 
+  const { getToken } = await auth();
+  const token = await getToken();
   const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
 
   try {
     const res = await fetch(
       `${backendUrl}/grievances/${encodeURIComponent(conversationId)}/fields?language=${encodeURIComponent(language)}`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
     );
     if (res.ok) {
       return NextResponse.json(await res.json());

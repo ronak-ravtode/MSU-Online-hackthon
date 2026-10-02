@@ -34,6 +34,8 @@ Evidence-grounded, multilingual citizen-assistance platform for cooperative gove
              |  /voice/speak             |
              |  /conversations           |
              |  /evidence  /grievance    |
+             |  /documents /translate    |
+             |  /webhooks/clerk          |
              |  /health /health/providers|
               +------+------+------+------+
                      |      |      |
@@ -111,7 +113,7 @@ Evidence-grounded, multilingual citizen-assistance platform for cooperative gove
 ```
 POST /chat (or /chat/stream for SSE)
   │
-  ├── resolve_and_remember()      → detect/remember response language (en/hi/gu/mr/bn/ta)
+  ├── resolve_and_remember()      → detect/remember response language (en/hi/gu/mr/bn/ta/te/kn/pa/or/ml)
   ├── detect_query_languages()    → dominant language + language_mix
   ├── _translate_to_english()     → Sarvam (primary) → Azure (fallback)
   ├── get_embedding_provider().embed_texts()  → 768d Jina v3 embedding
@@ -184,11 +186,15 @@ Response: { answer, transcribed_text, audio_base64, language, domain,
 
 Events emitted in order:
 1. `thinking` — `{ text: "Searching official documents & web..." }`
-2. `thinking` — `{ text: "Analyzing evidence from both sources..." }`
-3. `thinking` — `{ text: "Preparing answer..." }`
-4. `token` — `{ text: "word " }` (one per word)
-5. `metadata` — `{ domain, confidence, confidence_level, citations, abstained, language, mode }`
-6. `done` — `{}`
+2. `step` — `{ step_id: "retrieval_start", label: "Searching sources", status: "running" }`
+3. `step` — `{ step_id: "static_done", label: "Document search complete", status: "done" }`
+4. `step` — `{ step_id: "web_done", label: "Web search complete", status: "done" }`
+5. `step` — `{ step_id: "evidence_merge", label: "Merging evidence", status: "running" }`
+6. `step` — `{ step_id: "llm_generate", label: "Generating response", status: "running" }`
+7. `step` — `{ step_id: "citation_verify", label: "Verifying citations", status: "done" }`
+8. `token` — `{ text: "word " }` (one per word)
+9. `metadata` — `{ domain, confidence, confidence_level, citations, abstained, language, mode }`
+10. `done` — `{}`
 
 ---
 
@@ -309,15 +315,11 @@ Multiple independent layers bound the amount of evidence and tokens processed:
 - Dynamic (web) evidence: top 3 highest-quality chunks only
 - Per-chunk text: truncated at `MAX_CHARS_PER_CHUNK = 3000`
 
-**Context builder** (`rag/context_builder.py`) — caps the overall context window:
-- Default `max_chunks = 8` (total across all sources)
-
 **Web RAG** (`web_rag/service.py`) — caps chunks per web source:
 - `WEB_MAX_CHUNKS_PER_SOURCE = 12`
 
-**Generation token limits** (`config.py`, `groq_llm.py`, `rag/answer_generator.py`):
-- Normal generation: `GENERATION_MAX_TOKENS = 1800`
-- Repair generation (citation repair): `REPAIR_MAX_TOKENS = 2200`
+**Generation token limits** (`config.py`, `groq_llm.py`):
+- Generation: `GENERATION_MAX_TOKENS = 4096`
 
 These are separate layers (retrieval → evidence selection → prompt assembly → generation) and are not contradictory. Each bounds a different stage of the pipeline.
 
@@ -372,7 +374,7 @@ _grievance_message()
 - `GrievanceCard`: disclaimer, buttons use `t()`
 - `GrievanceFlow`: wizard submit uses `t("grievanceWizard.submitting")`
 
-**Supported languages:** `en | hi | gu | mr | bn | ta` — same as chat.
+**Supported languages:** `en | hi | gu | mr | bn | ta | te | kn | pa | or | ml` — same as chat.
 
 ---
 

@@ -8,16 +8,25 @@ from __future__ import annotations
 import httpx
 
 from app.config import REQUEST_TIMEOUT_S, get_settings
+from app.key_rotator import KeyRotator
 
 
 class JinaReranker:
     """Thin wrapper around Jina Reranker v2 API."""
 
-    def __init__(self) -> None:
+    def __init__(self, timeout_s: float | None = None) -> None:
         settings = get_settings()
-        self._key = settings.jina_api_key
         self._model = settings.reranker_model
         self._endpoint = "https://api.jina.ai/v1/rerank"
+        self._timeout_s = timeout_s if timeout_s is not None else settings.jina_reranker_timeout_s
+        keys = settings.jina_keys
+        self._rotator = KeyRotator(keys, name="jina-reranker") if keys else None
+
+    @property
+    def _key(self) -> str:
+        if self._rotator:
+            return self._rotator.current_key
+        return ""
 
     def rerank(self, query: str, documents: list[dict],
                top_n: int | None = None) -> list[dict]:
@@ -43,23 +52,29 @@ class JinaReranker:
             docs_for_jina.append({"text": text, "index": i})
 
         try:
-            with httpx.Client(timeout=REQUEST_TIMEOUT_S) as client:
-                resp = client.post(
-                    self._endpoint,
-                    headers={
-                        "Authorization": f"Bearer {self._key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self._model,
-                        "query": query,
-                        "documents": [d["text"] for d in docs_for_jina],
-                        "top_n": top_n or len(documents),
-                        "return_documents": False,
-                    },
-                )
-                resp.raise_for_status()
-                results = resp.json().get("results", [])
+            def _rerank_with_key(key: str) -> list[dict]:
+                with httpx.Client(timeout=self._timeout_s) as client:
+                    resp = client.post(
+                        self._endpoint,
+                        headers={
+                            "Authorization": f"Bearer {key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self._model,
+                            "query": query,
+                            "documents": [d["text"] for d in docs_for_jina],
+                            "top_n": top_n or len(documents),
+                            "return_documents": False,
+                        },
+                    )
+                    resp.raise_for_status()
+                    return resp.json().get("results", [])
+
+            if self._rotator:
+                results = self._rotator.try_keys(_rerank_with_key)
+            else:
+                results = _rerank_with_key(self._key)
 
             # Map reranker results back to original documents
             reranked = []

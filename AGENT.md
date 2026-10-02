@@ -24,7 +24,7 @@ found, the system abstains rather than guessing.
 ```
 User message
   │
-  ├── Language detection (app/language.py)        en/hi/gu/mr/bn/ta
+  ├── Language detection (app/language.py)        en/hi/gu/mr/bn/ta/te/kn/pa/or/ml
   ├── Domain classification (app/domains.py)       AnchorStore: keyword + cosine
   ├── Translation to English (if needed)           Sarvam → Azure fallback
   │
@@ -55,6 +55,15 @@ User message
 | App entry point + route registration | `backend/app/main.py` |
 | Chat endpoint (sync + SSE stream) | `backend/app/routes/chat.py` |
 | Voice endpoint | `backend/app/routes/voice.py` |
+| Conversations endpoint | `backend/app/routes/conversations.py` |
+| Evidence endpoint | `backend/app/routes/evidence.py` |
+| Grievance endpoints | `backend/app/routes/grievance.py` |
+| Documents endpoint | `backend/app/routes/documents.py` |
+| Translate endpoint | `backend/app/routes/translate.py` |
+| Clerk webhook | `backend/app/routes/webhooks.py` |
+| Clerk auth dependency | `backend/app/auth.py` |
+| Conversation CRUD | `backend/app/conversation_store.py` |
+| Response language resolver | `backend/app/resolve_response_language.py` |
 | Domain classifier (AnchorStore) | `backend/app/domains.py` |
 | Config + all env vars | `backend/app/config.py` |
 | RAG orchestrator | `backend/app/services/rag_orchestrator.py` |
@@ -63,6 +72,7 @@ User message
 | Evidence controller + prompt builder | `backend/app/evidence_controller.py` |
 | Evidence gate (abstention thresholds) | `backend/app/evidence_gate.py` |
 | Citation verifier | `backend/app/citation_verifier.py` |
+| Answer grounding | `backend/app/answer_grounding.py` |
 | Grievance workflow | `backend/app/grievance/workflow.py` |
 | Voice service (STT/TTS fallback) | `backend/app/services/voice_service.py` |
 | LLM providers | `backend/app/providers/groq_llm.py`, `gemini_llm.py` |
@@ -73,7 +83,8 @@ User message
 | Database schema | `backend/schema.sql` |
 | Frontend (Next.js 16) | `frontend/` |
 | Main chat UI | `frontend/src/components/ChatWindow.tsx` |
-| i18n (6 languages) | `frontend/src/lib/i18n/` |
+| Thinking process UI | `frontend/src/components/chat/ThinkingProcess.tsx` |
+| i18n (11 languages) | `frontend/src/lib/i18n/` |
 | Document ingestion | `backend/seed_parser.py`, `backend/ingest_seed.py` |
 
 ---
@@ -101,22 +112,30 @@ User message
 ```
 POST /chat
   Body: { question, session_id, language, ui_language_explicit?, state?, as_of_date?, history? }
-  language: "en" | "hi" | "gu" | "mr" | "bn" | "ta"
+  language: "en" | "hi" | "gu" | "mr" | "bn" | "ta" | "te" | "kn" | "pa" | "or" | "ml"
   Response: { answer, language, domain, intent, entities, confidence,
               confidence_level, citations, abstained, speech_text,
               speech_segments, follow_up_question, mode, conversation_id }
 
 POST /chat/stream
   Same body as /chat
-  SSE events: thinking | token | metadata | done
+  SSE events: thinking | step | token | metadata | done
 
 POST /voice          (multipart: audio file, language, session_id, state)
 POST /voice/transcribe (JSON: { audio: base64, language })
 POST /voice/speak    (JSON: { text, language, segments? })
 
 GET  /conversations/{session_id}
+GET  /conversations/{id}/pin
 GET  /evidence/{...}
+GET  /documents/pdf/{filename}
 POST /grievance
+POST /grievances/answer
+POST /grievances/finalize
+POST /grievances/clarify
+POST /grievances/fields
+POST /translate
+POST /webhooks/clerk
 GET  /health
 GET  /health/providers
 ```

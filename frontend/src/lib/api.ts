@@ -121,6 +121,7 @@ export interface GrievanceFieldSpec {
   input_type: "int" | "date" | "text";
   mandatory: boolean;
   value: string | null;
+  suggestion?: string;
 }
 
 export interface GrievanceDetectResponse {
@@ -220,6 +221,7 @@ export async function sendChat(payload: {
   state: string | null;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   ui_language_explicit?: boolean;
+  mode?: "static" | "web" | "rag_web";
 }): Promise<ChatResponse> {
   const r = await fetch("/api/chat", {
     method: "POST",
@@ -230,10 +232,20 @@ export async function sendChat(payload: {
   return r.json();
 }
 
-export interface StreamEvent {
-  event: "thinking" | "token" | "metadata" | "done" | "error";
-  data: Record<string, unknown>;
+export interface StepEvent {
+  id: string;
+  label: string;
+  detail: string;
+  status: "active" | "completed" | "pending";
 }
+
+export type StreamEvent =
+  | { event: "thinking"; data: { text: string } }
+  | { event: "step"; data: StepEvent }
+  | { event: "token"; data: { text: string } }
+  | { event: "metadata"; data: Record<string, unknown> }
+  | { event: "done"; data: Record<string, unknown> }
+  | { event: "error"; data: { message: string } };
 
 export async function sendChatStream(
   payload: {
@@ -243,6 +255,7 @@ export async function sendChatStream(
     state: string | null;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
     ui_language_explicit?: boolean;
+    mode?: "static" | "web" | "rag_web";
   },
   onEvent: (event: StreamEvent) => void,
   signal?: AbortSignal,
@@ -274,9 +287,9 @@ export async function sendChatStream(
         const raw = line.slice(6);
         try {
           const data = JSON.parse(raw);
-          onEvent({ event: currentEvent as StreamEvent["event"], data });
+          onEvent({ event: currentEvent as StreamEvent["event"], data } as StreamEvent);
         } catch {
-          onEvent({ event: currentEvent as StreamEvent["event"], data: { text: raw } });
+          onEvent({ event: currentEvent as StreamEvent["event"], data: { text: raw } } as StreamEvent);
         }
         currentEvent = "";
       }
@@ -317,5 +330,18 @@ export async function fetchVoiceSpeak(
     body: JSON.stringify({ segments }),
   });
   if (!r.ok) throw new Error(`Voice speak API ${r.status}`);
+  return r.json();
+}
+
+export async function fetchVoiceTranscribe(
+  audio: string,
+  language: string,
+): Promise<{ text: string; language: string }> {
+  const r = await fetch("/api/voice/transcribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ audio, language }),
+  });
+  if (!r.ok) throw new Error(`Voice transcribe API ${r.status}`);
   return r.json();
 }

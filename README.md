@@ -1,6 +1,6 @@
-# Sahakarita — Multilingual Cooperative Governance & Legal Assistance Chatbot
+# JanSahay — Multilingual Cooperative Governance & Legal Assistance Chatbot
 
-Evidence-grounded, multilingual (English + Hindi + Gujarati + Marathi + Bengali + Tamil)
+Evidence-grounded, multilingual (English + Hindi + Gujarati + Marathi + Bengali + Tamil + Telugu + Kannada + Punjabi + Odia + Malayalam)
 citizen-assistance PWA for cooperative governance, legal guidance, schemes, PMFBY,
 financial literacy, and grievance redressal.
 
@@ -14,16 +14,18 @@ financial literacy, and grievance redressal.
 ## What It Does
 
 - Answers questions from official government sources with verifiable citations
-- **6 languages**: English, Hindi, Gujarati, Marathi, Bengali, Tamil
+- **11 languages**: English, Hindi, Gujarati, Marathi, Bengali, Tamil, Telugu, Kannada, Punjabi, Odia, Malayalam
 - Routes queries across 7 domains: cooperative, PACS, schemes, PMFBY, agriculture,
   financial literacy, grievance
 - Applies jurisdiction filtering (central + selected state — currently Gujarat)
 - **Hybrid retrieval**: dense vector search (pgvector) + lexical search (RRF fusion)
+- **Web-grounded RAG**: Tavily/Firecrawl → BM25 → Gemini rerank → source verify
 - Abstains when evidence is insufficient — never guesses
 - Prototype grievance workflow with follow-up questions, status lookup, and
   full multilingual localization (system text translated; user values preserved)
   (`is_official_submission: false` — no real government integration)
 - Voice input/output via Sarvam AI (Indic language support)
+- Clerk authentication (optional, configurable)
 - Responsive PWA (desktop + mobile)
 
 ---
@@ -58,7 +60,8 @@ low-confidence or uncited result into an answer.
 | Embeddings | Jina Embeddings v3 (`jina-embeddings-v3`), 768d |
 | LLM | Groq (`openai/gpt-oss-120b` primary, `qwen/qwen3.8-27b` fallback), Gemini 2.5 Flash ultimate fallback |
 | Reranker | Jina reranker (wired, disabled — `RERANKER_ENABLED=false`) |
-| Voice | Sarvam AI (STT + TTS) primary, Azure fallback, text-only final |
+| Voice | Sarvam AI (STT + TTS + translation) primary, Azure STT fallback |
+| Auth | Clerk (optional, configurable) |
 | Document parsing | MinerU `content_list_v2.json` |
 | Eval | Supabase-backed retrieval eval, pytest |
 
@@ -69,13 +72,18 @@ low-confidence or uncited result into an answer.
 ```
 backend/
   app/
-    main.py                FastAPI entrypoint (6 routers: chat, voice, conversations, evidence, grievance, documents)
+    main.py                FastAPI entrypoint (8 routers: chat, voice, conversations, evidence, grievance, documents, translate, webhooks)
     routes/
       chat.py              /chat + /chat/stream — language detect → domain classify → RAGOrchestrator or GrievanceWorkflow
       voice.py             /voice, /voice/transcribe, /voice/speak
-      conversations.py     /conversations/{session_id}
+      conversations.py     /conversations/{session_id}, /conversations/{id}/pin
       evidence.py          /evidence/...
-      grievance.py         /grievance REST endpoint
+      grievance.py         /grievance, /grievances/answer, /grievances/finalize, /grievances/clarify, /grievances/fields
+      documents.py         /documents/pdf/{filename}
+      translate.py         /translate
+      webhooks.py          /webhooks/clerk
+    auth.py                Clerk authentication (require_auth dependency)
+    conversation_store.py  Conversation CRUD (Supabase conversations table)
     domains.py             AnchorStore domain classifier (keyword rules + cosine similarity)
     evidence_gate.py       abstention thresholds (TOP1=0.25, SECONDARY=0.30, MIN_CHUNKS=2)
     citation_verifier.py   set-membership citation validation
@@ -128,7 +136,7 @@ frontend/
     ui/                     Button, Badge, Icons, etc.
   src/lib/
     api.ts                  Backend API client
-    i18n/                   6-language i18n provider + dictionaries
+    i18n/                   11-language i18n provider + dictionaries
     data/                   schemes, services, library data
     speech.ts               Browser speech recording
 
@@ -204,7 +212,7 @@ python backend/seed_parser.py     # content_list_v2.json → chunks_jsonl/*.json
 python backend/ingest_seed.py     # embed (Jina v3) + insert into Supabase
 ```
 
-Current frozen corpus: **11 documents, 4,778 embedded chunks (768d Jina v3)**.
+Current corpus: **50 documents, 15,002 embedded chunks (768d Jina v3)** across 5 domains (pacs_governance, pacs_computerization, pmfby, financial_inclusion, schemes).
 
 ---
 
@@ -218,6 +226,11 @@ Current frozen corpus: **11 documents, 4,778 embedded chunks (768d Jina v3)**.
 | Marathi | `mr` | Full support |
 | Bengali | `bn` | Full support |
 | Tamil | `ta` | Full support |
+| Telugu | `te` | Full support |
+| Kannada | `kn` | Full support |
+| Punjabi | `pa` | Full support |
+| Odia | `or` | Full support |
+| Malayalam | `ml` | Full support |
 
 All UI strings translated. Backend responds in the same language as the question.
 
@@ -248,6 +261,7 @@ All UI strings translated. Backend responds in the same language as the question
 - Jurisdiction + effective-date metadata on all legal/cooperative answers.
 - Grievances are prototype-only (`is_official_submission: false`) — no real CPGRAMS.
 - Structured logs without PII or secrets.
+- Clerk authentication (optional) for user identity.
 
 ---
 

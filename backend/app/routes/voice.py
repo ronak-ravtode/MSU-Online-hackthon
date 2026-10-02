@@ -10,9 +10,10 @@ only adapts HTTP I/O and error policy.
 import base64
 import logging
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 
+from app.auth import require_auth
 from app.routes.chat import chat as chat_handler
 from app.routes.chat import ChatRequest
 from app.services.voice_service import VoiceService, VoiceUnavailableError
@@ -93,6 +94,7 @@ async def voice_chat(
     language: str = Form(default="hi"),
     session_id: str = Form(default=""),
     state: str | None = Form(default=None),
+    user_id: str = Depends(require_auth),
 ) -> dict:
     """Full voice pipeline: audio → STT → RAG → TTS → audio.
 

@@ -30,6 +30,33 @@ test("fetchVoiceSpeak posts segments to /api/voice/speak and returns audio hex",
   expect(result).toEqual({ audio: "48656c6c6f", language: "en" });
 });
 
+test("fetchVoiceTranscribe posts audio to /api/voice/transcribe and returns text", async () => {
+  const fetchMock = vi.fn<FetchMock>(async () => ({
+    ok: true,
+    json: async () => ({ text: "hello", language: "en" }),
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  // Dynamic import so a missing export fails this test only, not the whole file.
+  const mod = (await import("../api")) as {
+    fetchVoiceTranscribe?: (
+      audio: string,
+      language: string,
+    ) => Promise<{ text: string; language: string }>;
+  };
+  expect(mod.fetchVoiceTranscribe).toBeTypeOf("function");
+
+  const result = await mod.fetchVoiceTranscribe!("dGVzdA==", "en");
+
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const [url, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+  expect(url).toBe("/api/voice/transcribe");
+  expect(init.method).toBe("POST");
+  const body = JSON.parse(init.body as string);
+  expect(body).toEqual({ audio: "dGVzdA==", language: "en" });
+  expect(result).toEqual({ text: "hello", language: "en" });
+});
+
 test("sendChat serializes ui_language_explicit when provided", async () => {
   const fetchMock = vi.fn<FetchMock>(async () => ({
     ok: true,

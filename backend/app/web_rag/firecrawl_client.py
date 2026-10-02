@@ -35,7 +35,7 @@ FIRECRAWL_SEARCH_URL = (
     "https://api.firecrawl.dev/v1/search"
 )
 
-DEFAULT_TIMEOUT_SECONDS = 45
+DEFAULT_TIMEOUT_SECONDS = 5
 
 DEFAULT_MAX_RESULTS = 20
 

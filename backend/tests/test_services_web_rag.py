@@ -94,11 +94,28 @@ def _make_classification(
 # ---------------------------------------------------------------------------
 
 class TestDomainScopeGate:
-    def test_general_domain_abstains(self):
+    def test_general_domain_passes_scope_gate(self):
+        """General domain now proceeds to web discovery instead of aborting."""
         service = WebRAGService()
         classification = _make_classification(domain="general")
+        with patch.object(service.web_discovery, "discover") as mock_discover:
+            mock_discover.return_value = {"results": [], "classification": {"domain": "general"}}
+            result = service.retrieve(
+                query="What is the weather?",
+                classification=classification,
+            )
+            # Should reach discovery (not blocked at scope gate)
+            # Abstains because discovery returns no results
+            mock_discover.assert_called_once()
+            assert result.abstained is True
+            assert result.reason == AbstentionReason.NO_ELIGIBLE_SOURCE
+
+    def test_unsupported_domain_abstains(self):
+        """Truly unsupported domain (not in SUPPORTED_DOMAINS) still abstains."""
+        service = WebRAGService()
+        classification = _make_classification(domain="cooking")
         result = service.retrieve(
-            query="What is the weather?",
+            query="How to cook pasta?",
             classification=classification,
         )
         assert result.abstained is True

@@ -768,7 +768,6 @@ def _ingest_document(supabase: Client, provider, doc_id: str, chunks: list[dict]
         "domain": meta["domain"],
         "document_type": meta["document_type"],
         "source_url": meta["source_url"],
-        "source_file": _document_source_file(chunks),
         "effective_date": meta["effective_date"],
         "document_date": meta["document_date"],
         "verified_date": "2026-08-29",
@@ -815,7 +814,6 @@ def _ingest_document(supabase: Client, provider, doc_id: str, chunks: list[dict]
             "chunker_version": "mineru-content_list_v2",
             "ordinal": len(rows_to_embed),
             "content": text,
-            "source_file": c.get("source_file") or None,
             "metadata": {
                 "heading_path": heading_path,
                 "section": c.get("section", ""),

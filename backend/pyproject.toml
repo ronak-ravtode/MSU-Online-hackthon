@@ -19,6 +19,8 @@ dependencies = [
   "pymupdf>=1.28.2",
   "scikit-learn>=1.9.0",
   "python-multipart>=0.0.9",
+  "python-jose[cryptography]>=3.3",
+  "svix>=1.0",
 ]
 
 [project.optional-dependencies]

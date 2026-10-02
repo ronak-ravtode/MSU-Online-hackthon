@@ -15,6 +15,31 @@ from app.contracts import (
     EvidenceChunk,
 )
 
+# Domain alias mapping — some classifiers use shorthand names that
+# refer to the same conceptual domain as AnchorStore's canonical names.
+_DOMAIN_ALIASES: dict[str, set[str]] = {
+    "financial_inclusion": {"finlit", "financial_inclusion"},
+    "finlit": {"finlit", "financial_inclusion"},
+    "cooperative": {"cooperative", "pacs"},
+    "pacs": {"cooperative", "pacs"},
+    "schemes": {"schemes", "pmfby"},
+    "pmfby": {"schemes", "pmfby"},
+    "agriculture": {"agriculture", "pmfby"},
+}
+
+
+def _domain_matches(chunk_domain: str, expected_domain: str) -> bool:
+    """Check if chunk domain matches expected domain, considering aliases."""
+    if chunk_domain == expected_domain:
+        return True
+    expected_aliases = _DOMAIN_ALIASES.get(expected_domain)
+    if expected_aliases and chunk_domain in expected_aliases:
+        return True
+    chunk_aliases = _DOMAIN_ALIASES.get(chunk_domain)
+    if chunk_aliases and expected_domain in chunk_aliases:
+        return True
+    return False
+
 
 def evidence_gate(
     chunks: list[EvidenceChunk],
@@ -38,8 +63,8 @@ def evidence_gate(
     if not chunks:
         return True, AbstentionReason.NO_ELIGIBLE_SOURCE, ConfidenceBand.LOW
 
-    # Domain filter
-    domain_chunks = [c for c in chunks if c.domain == expected_domain]
+    # Domain filter — use alias-aware matching so "finlit" matches "financial_inclusion"
+    domain_chunks = [c for c in chunks if _domain_matches(c.domain, expected_domain)]
     if not domain_chunks:
         return True, AbstentionReason.DOMAIN_MISMATCH, ConfidenceBand.LOW
 

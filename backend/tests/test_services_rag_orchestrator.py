@@ -948,3 +948,131 @@ class TestCitationVerification:
             # Auto-append truncates chunk_id to 8 chars: chunk-abc12345 -> chunk-ab
             assert "[chunk:chunk-ab]" in answer_arg
             assert response.abstained is False
+
+
+# ---------------------------------------------------------------------------
+# on_step callback
+# ---------------------------------------------------------------------------
+
+class TestOnStepCallback:
+    async def test_on_step_called_with_retrieval_events(self):
+        settings = _make_settings()
+        orch = RAGOrchestrator(settings)
+        classification = _make_classification()
+
+        static_chunks = [_make_evidence_chunk(chunk_id="static-abc12345def67890")]
+        web_chunks = [_make_evidence_chunk(chunk_id="web-abc12345def67890", source_type="web")]
+
+        static_result = _make_rag_result(chunks=static_chunks, band=ConfidenceBand.HIGH)
+        web_result = _make_rag_result(chunks=web_chunks, band=ConfidenceBand.MEDIUM)
+
+        bundle = _make_bundle(static_chunks=static_chunks, web_chunks=web_chunks)
+
+        steps: list[dict] = []
+
+        with patch.object(orch._static_rag, "retrieve", return_value=static_result), \
+             patch.object(orch._web_rag, "retrieve", return_value=web_result), \
+             patch.object(orch._evidence_controller, "build_bundle", return_value=bundle), \
+             patch.object(orch._evidence_controller, "assess_evidence", return_value=EvidenceAssessment(
+                 source_role=SourceRole.BALANCED, sufficiency=EvidenceSufficiency.SUFFICIENT,
+                 static_quality="high", web_quality="medium", assessment_text="test"
+             )), \
+             patch.object(orch._evidence_controller, "build_curated_prompt", return_value=("system", "user prompt")), \
+             patch("app.services.rag_orchestrator.grounded_answer",
+                   return_value="PMFBY provides crop insurance [chunk:static-abc12345]"), \
+             patch("app.services.rag_orchestrator.verify_citations",
+                   return_value=VerificationResult(is_valid=True)), \
+             patch("app.services.rag_orchestrator.strip_citations",
+                   return_value=("PMFBY provides crop insurance", ["static-abc12345"])):
+            await orch.run(
+                query="test", english_query="test", embedding=[0.5] * 768,
+                domain="pmfby", state=None, classification=classification,
+                history=[], lang="en", session_id="s1",
+                on_step=lambda s: steps.append(s),
+            )
+
+        step_ids = [s["id"] for s in steps]
+        assert "static_done" in step_ids
+        assert "web_done" in step_ids
+        assert "evidence_merge" in step_ids
+        assert "llm_generate" in step_ids
+        assert "citation_verify" in step_ids
+
+        for step in steps:
+            assert "id" in step
+            assert "detail" in step
+            assert "status" in step
+
+    async def test_on_step_none_does_not_crash(self):
+        settings = _make_settings()
+        orch = RAGOrchestrator(settings)
+        classification = _make_classification()
+
+        static_chunks = [_make_evidence_chunk()]
+        static_result = _make_rag_result(chunks=static_chunks, band=ConfidenceBand.HIGH)
+        web_result = _make_rag_result(abstained=True)
+
+        bundle = _make_bundle(static_chunks=static_chunks)
+
+        with patch.object(orch._static_rag, "retrieve", return_value=static_result), \
+             patch.object(orch._web_rag, "retrieve", return_value=web_result), \
+             patch.object(orch._evidence_controller, "build_bundle", return_value=bundle), \
+             patch.object(orch._evidence_controller, "assess_evidence", return_value=EvidenceAssessment(
+                 source_role=SourceRole.STATIC_PRIMARY, sufficiency=EvidenceSufficiency.SUFFICIENT,
+                 static_quality="high", web_quality="low", assessment_text="test"
+             )), \
+             patch.object(orch._evidence_controller, "build_curated_prompt", return_value=("system", "user prompt")), \
+             patch("app.services.rag_orchestrator.grounded_answer",
+                   return_value="PMFBY answer [chunk:chunk-abc12345]"), \
+             patch("app.services.rag_orchestrator.verify_citations",
+                   return_value=VerificationResult(is_valid=True)), \
+             patch("app.services.rag_orchestrator.strip_citations",
+                   return_value=("PMFBY answer", ["chunk-abc12345"])):
+            resp = await orch.run(
+                query="test", english_query="test", embedding=[0.5] * 768,
+                domain="pmfby", state=None, classification=classification,
+                history=[], lang="en", session_id="s1",
+            )
+
+        assert resp.answer == "PMFBY answer"
+        assert resp.abstained is False
+
+    async def test_on_step_skips_abstained_sources(self):
+        settings = _make_settings()
+        orch = RAGOrchestrator(settings)
+        classification = _make_classification()
+
+        static_result = _make_rag_result(abstained=True)
+        web_result = _make_rag_result(
+            chunks=[_make_evidence_chunk(source_type="web")],
+            band=ConfidenceBand.MEDIUM,
+        )
+
+        bundle = _make_bundle(web_chunks=[_make_evidence_chunk(source_type="web")])
+
+        steps: list[dict] = []
+
+        with patch.object(orch._static_rag, "retrieve", return_value=static_result), \
+             patch.object(orch._web_rag, "retrieve", return_value=web_result), \
+             patch.object(orch._evidence_controller, "build_bundle", return_value=bundle), \
+             patch.object(orch._evidence_controller, "assess_evidence", return_value=EvidenceAssessment(
+                 source_role=SourceRole.WEB_PRIMARY, sufficiency=EvidenceSufficiency.SUFFICIENT,
+                 static_quality="low", web_quality="medium", assessment_text="test"
+             )), \
+             patch.object(orch._evidence_controller, "build_curated_prompt", return_value=("system", "user prompt")), \
+             patch("app.services.rag_orchestrator.grounded_answer",
+                   return_value="Web answer [chunk:web-abc12345]"), \
+             patch("app.services.rag_orchestrator.verify_citations",
+                   return_value=VerificationResult(is_valid=True)), \
+             patch("app.services.rag_orchestrator.strip_citations",
+                   return_value=("Web answer", ["web-abc12345"])):
+            await orch.run(
+                query="test", english_query="test", embedding=[0.5] * 768,
+                domain="pmfby", state=None, classification=classification,
+                history=[], lang="en", session_id="s1",
+                on_step=lambda s: steps.append(s),
+            )
+
+        step_ids = [s["id"] for s in steps]
+        assert "static_done" not in step_ids
+        assert "web_done" in step_ids

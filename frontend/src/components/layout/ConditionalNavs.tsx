@@ -1,20 +1,21 @@
 "use client";
 import { usePathname } from "next/navigation";
 import { TopNav } from "./TopNav";
-import { MobileNav } from "./MobileNav";
+import { Footer } from "./Footer";
+import { FloatingChatWidget } from "@/components/FloatingChatWidget";
 
-const HIDE_NAV_ROUTES = ["/chat"];
-
-export function ConditionalNavs() {
+export function ConditionalNavs({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const hideNav = HIDE_NAV_ROUTES.some((route) => pathname.startsWith(route));
-
-  if (hideNav) return null;
+  const isChat = pathname.startsWith("/chat");
+  const isAuth = pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up");
+  const hideNav = isChat || isAuth;
 
   return (
     <>
-      <TopNav />
-      <MobileNav />
+      {!hideNav && <TopNav />}
+      <main id="content">{children}</main>
+      {!hideNav && <Footer />}
+      {!hideNav && <FloatingChatWidget />}
     </>
   );
 }

@@ -4,9 +4,9 @@ import { IconInfo, IconAlertTriangle, IconXCircle, IconX } from "./Icons";
 type Tone = "info" | "warn" | "error";
 
 const TONES: Record<Tone, string> = {
-  info: "bg-[var(--cream)] text-[var(--text-body)] border-[var(--accent-legal)]/20",
-  warn: "bg-[var(--state-warning)]/10 text-[var(--state-warning)] border-[var(--state-warning)]/25",
-  error: "bg-[var(--state-error)]/10 text-[var(--state-error)] border-[var(--state-error)]/25",
+  info: "bg-[var(--cream)] text-[var(--body)] border-[var(--hairline)]",
+  warn: "bg-[var(--warning)]/12 text-[var(--warning)] border-[var(--warning)]/30",
+  error: "bg-[var(--error)]/12 text-[var(--error)] border-[var(--error)]/30",
 };
 
 const ICONS: Record<Tone, ReactNode> = {
@@ -29,7 +29,7 @@ export function Alert({
   closeLabel?: string;
 }) {
   return (
-    <div role="alert" className={`flex items-start gap-3 rounded-[var(--radius-lg)] border px-4 py-3.5 text-[var(--text-sm)] ${TONES[tone]}`}>
+    <div role="alert" className={`flex items-start gap-3 rounded-[var(--radius-md)] border px-4 py-3.5 text-[var(--text-sm)] ${TONES[tone]}`}>
       <span className="mt-0.5 shrink-0">{ICONS[tone]}</span>
       <div className="min-w-0 flex-1">
         {title ? (

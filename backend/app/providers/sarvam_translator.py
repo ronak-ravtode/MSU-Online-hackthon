@@ -60,7 +60,13 @@ class SarvamTranslatorError(RuntimeError):
 _translate_cache: dict[tuple[str, str, str, str], str] = {}
 
 
-def _raw_translate(api_key: str, text: str, source_lang: str, target_lang: str) -> str:
+def _raw_translate(
+    api_key: str,
+    text: str,
+    source_lang: str,
+    target_lang: str,
+    translation_stage: str = "other",
+) -> str:
     """Make a single Sarvam translate API call. Raises on failure."""
     payload = {
         "input": text,
@@ -83,8 +89,13 @@ def _raw_translate(api_key: str, text: str, source_lang: str, target_lang: str) 
         resp.raise_for_status()
         data = resp.json()
         translated = data.get("translated_text", "")
-        logger.debug("Sarvam translate: %s -> %s (len %d -> %d)",
-                     source_lang, target_lang, len(text), len(translated))
+        logger.info(
+            "translation_stage=%s provider=sarvam source=%s target=%s input_chars=%d output_chars=%d "
+            "translation_calls_total=1 translation_calls_query=%d translation_calls_final=%d",
+            translation_stage, source_lang, target_lang, len(text), len(translated),
+            int(translation_stage == "input_query"),
+            int(translation_stage == "final_answer"),
+        )
         return translated if translated else text
 
 
@@ -137,15 +148,27 @@ class SarvamTranslator:
     def configured(self) -> bool:
         return self._rotator is not None
 
-    def _translate_chunk(self, text: str, source: str, target: str) -> str:
+    def _translate_chunk(
+        self,
+        text: str,
+        source: str,
+        target: str,
+        translation_stage: str,
+    ) -> str:
         """Translate a single chunk of text."""
         if not text.strip():
             return text
         return self._rotator.try_keys(  # type: ignore[union-attr]
-            lambda key: _raw_translate(key, text, source, target)
+            lambda key: _raw_translate(key, text, source, target, translation_stage)
         )
 
-    def translate(self, text: str, to: str = "en", source: str | None = None) -> str:
+    def translate(
+        self,
+        text: str,
+        to: str = "en",
+        source: str | None = None,
+        translation_stage: str = "other",
+    ) -> str:
         if not self.configured or not text.strip():
             logger.debug("Sarvam translate skipped: configured=%s, text_empty=%s",
                         self.configured, not text.strip())
@@ -170,7 +193,7 @@ class SarvamTranslator:
 
             if len(chunks) == 1:
                 # Short text, translate directly
-                result = self._translate_chunk(text, source, target)
+                result = self._translate_chunk(text, source, target, translation_stage)
             else:
                 # Long text, translate each chunk and rejoin.
                 # If ANY chunk fails, the entire translation fails so
@@ -178,11 +201,15 @@ class SarvamTranslator:
                 logger.info("Sarvam: splitting into %d chunks for translation", len(chunks))
                 translated_chunks = []
                 for i, chunk in enumerate(chunks):
-                    translated_chunk = self._translate_chunk(chunk, source, target)
+                    translated_chunk = self._translate_chunk(
+                        chunk, source, target, translation_stage,
+                    )
                     translated_chunks.append(translated_chunk)
                     logger.debug("Sarvam chunk %d/%d translated: len %d -> %d",
                                i + 1, len(chunks), len(chunk), len(translated_chunk))
-                result = " ".join(translated_chunks)
+                # Preserve the answer's markdown/newline structure. Joining
+                # translated blocks with spaces collapses bullets and paragraphs.
+                result = "\n\n".join(translated_chunks)
 
             # Validate translation actually changed the text
             if result == text and source != target:

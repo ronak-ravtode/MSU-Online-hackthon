@@ -144,7 +144,7 @@ class TestRetrieval:
                 state=None,
             )
             _, kwargs = mock_retrieve.call_args
-            assert kwargs["k"] == 6
+            assert kwargs["k"] == 25
 
     def test_default_k_with_reranker(self):
         service = StaticRAGService(_make_settings(reranker_enabled=True))
